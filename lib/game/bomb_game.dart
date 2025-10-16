@@ -25,6 +25,7 @@ class BombGame extends FlameGame with HasKeyboardHandlerComponents, ChangeNotifi
   
   // Player stats
   int playerHealth = 1;
+  int maxBombs = 1; // Maximum bombs that can be placed at once (upgradeable)
   int score = 0;
 
   BombGame({required this.onGameStateChanged});
@@ -190,6 +191,9 @@ class BombGame extends FlameGame with HasKeyboardHandlerComponents, ChangeNotifi
   void placeBomb() {
     if (isGameOver || player == null) return;
     
+    // Check if player has reached maximum bomb limit
+    if (bombs.length >= maxBombs) return;
+    
     final playerGridPos = player!.gridPosition;
     
     // Check if there's already a bomb at this position
@@ -300,7 +304,14 @@ class BombGame extends FlameGame with HasKeyboardHandlerComponents, ChangeNotifi
     final explosionY = explosionPos.y.toInt();
     
     if (playerGridX == explosionX && playerGridY == explosionY) {
-      _gameOver();
+      // Reduce player health by 1
+      playerHealth--;
+      player!.playerHealth--;
+      
+      // Check if player is dead
+      if (playerHealth <= 0) {
+        _gameOver();
+      }
     }
   }
 
@@ -315,6 +326,7 @@ class BombGame extends FlameGame with HasKeyboardHandlerComponents, ChangeNotifi
     isGameOver = false;
     paused = false;
     playerHealth = 1;
+    maxBombs = 1; // Reset to default
     score = 0;
     
     // Clear existing components
