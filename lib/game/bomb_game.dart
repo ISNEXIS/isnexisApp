@@ -24,7 +24,7 @@ class BombGame extends FlameGame with HasKeyboardHandlerComponents, ChangeNotifi
   late Function(bool) onGameStateChanged; // Callback to notify main app
   
   // Player stats
-  int playerHealth = 100;
+  int playerHealth = 1;
   int score = 0;
 
   BombGame({required this.onGameStateChanged});
@@ -170,6 +170,7 @@ class BombGame extends FlameGame with HasKeyboardHandlerComponents, ChangeNotifi
       getIsGameOver: () => isGameOver,
       getJoystickDirection: () => Vector2(joystickDirection.dx, joystickDirection.dy),
     );
+    player!.playerHealth = 1; // Initialize player health
     add(player!);
   }
 
@@ -313,7 +314,7 @@ class BombGame extends FlameGame with HasKeyboardHandlerComponents, ChangeNotifi
   void restartGame() {
     isGameOver = false;
     paused = false;
-    playerHealth = 100;
+    playerHealth = 1;
     score = 0;
     
     // Clear existing components

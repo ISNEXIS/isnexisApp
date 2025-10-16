@@ -12,6 +12,7 @@ class Player extends RectangleComponent {
   final int gridHeight;
   Vector2 velocity = Vector2.zero();
   int explosionRadius = 1; // Player's explosion radius (upgradeable)
+  int playerHealth = 1; // Player's health (upgradeable)
   
   // Reference to game map - will be set by the game
   late List<List<TileType>> Function() getGameMap;
