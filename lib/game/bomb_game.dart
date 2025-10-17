@@ -27,6 +27,11 @@ class BombGame extends FlameGame with HasKeyboardHandlerComponents, ChangeNotifi
   int playerHealth = 1;
   int maxBombs = 1; // Maximum bombs that can be placed at once (upgradeable)
   int score = 0;
+  
+  // Invincibility state
+  bool isPlayerInvincible = false;
+  double invincibilityTimer = 0.0;
+  static const double invincibilityDuration = 2.0; // 2 seconds of invincibility
 
   BombGame({required this.onGameStateChanged});
 
@@ -297,6 +302,9 @@ class BombGame extends FlameGame with HasKeyboardHandlerComponents, ChangeNotifi
   void _checkPlayerDamage(Vector2 explosionPos) {
     if (isGameOver || player == null) return;
     
+    // Don't damage player if they're invincible
+    if (isPlayerInvincible) return;
+    
     // Check if player's grid position matches explosion position
     final playerGridX = player!.gridPosition.x.toInt();
     final playerGridY = player!.gridPosition.y.toInt();
@@ -307,6 +315,10 @@ class BombGame extends FlameGame with HasKeyboardHandlerComponents, ChangeNotifi
       // Reduce player health by 1
       playerHealth--;
       player!.playerHealth--;
+      
+      // Activate invincibility
+      isPlayerInvincible = true;
+      invincibilityTimer = invincibilityDuration;
       
       // Check if player is dead
       if (playerHealth <= 0) {
@@ -328,6 +340,10 @@ class BombGame extends FlameGame with HasKeyboardHandlerComponents, ChangeNotifi
     playerHealth = 1;
     maxBombs = 1; // Reset to default
     score = 0;
+    
+    // Reset invincibility
+    isPlayerInvincible = false;
+    invincibilityTimer = 0.0;
     
     // Clear existing components
     removeAll(children.whereType<Bomb>());
@@ -388,6 +404,28 @@ class BombGame extends FlameGame with HasKeyboardHandlerComponents, ChangeNotifi
   @override
   void update(double dt) {
     super.update(dt);
-    // Game logic updates
+    
+    // Update invincibility timer
+    if (isPlayerInvincible) {
+      invincibilityTimer -= dt;
+      
+      if (invincibilityTimer <= 0) {
+        isPlayerInvincible = false;
+        invincibilityTimer = 0.0;
+      }
+      
+      // Visual feedback: make player flash by changing opacity
+      if (player != null) {
+        // Flash effect: alternates visibility every 0.2 seconds
+        final flashInterval = 0.2;
+        final flashPhase = (invincibilityTimer % flashInterval) / flashInterval;
+        player!.paint.color = player!.color.withOpacity(flashPhase > 0.5 ? 1.0 : 0.3);
+      }
+    } else {
+      // Restore full opacity when not invincible
+      if (player != null) {
+        player!.paint.color = player!.color.withOpacity(1.0);
+      }
+    }
   }
 }
