@@ -14,6 +14,8 @@ class ControlsPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    const double controlSize = 150.0; // Same size for both joystick and button
+    
     return Container(
       height: 200,
       decoration: BoxDecoration(
@@ -32,7 +34,7 @@ class ControlsPanel extends StatelessWidget {
           Padding(
             padding: const EdgeInsets.all(20.0),
             child: VirtualJoystick(
-              size: 100,
+              size: controlSize,
               onDirectionChanged: onJoystickChanged,
             ),
           ),
@@ -54,16 +56,20 @@ class ControlsPanel extends StatelessWidget {
           // Right side - Bomb button
           Padding(
             padding: const EdgeInsets.all(20.0),
-            child: ElevatedButton(
-              onPressed: onBombPressed,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.red,
-                shape: const CircleBorder(),
-                padding: const EdgeInsets.all(30),
-              ),
-              child: const Text(
-                '💣',
-                style: TextStyle(fontSize: 30),
+            child: SizedBox(
+              width: controlSize,
+              height: controlSize,
+              child: ElevatedButton(
+                onPressed: onBombPressed,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.red,
+                  shape: const CircleBorder(),
+                  padding: EdgeInsets.zero,
+                ),
+                child: const Text(
+                  '💣',
+                  style: TextStyle(fontSize: 50),
+                ),
               ),
             ),
           ),
