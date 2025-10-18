@@ -18,6 +18,12 @@ void main() async {
     DeviceOrientation.landscapeRight,
   ]);
 
+  // Enable fullscreen mode - hide status bar and navigation buttons
+  await SystemChrome.setEnabledSystemUIMode(
+    SystemUiMode.immersiveSticky,
+    overlays: [],
+  );
+
   runApp(const Isnexis());
 }
 
