@@ -51,20 +51,22 @@ class _GameScreenState extends State<GameScreen> {
     const int gridWidth = 17;
     const int gridHeight = 15;
     
-    // Calculate tile size to fit screen (same calculation as in bomb_game.dart)
+    // Calculate tile size to fit screen (ensuring 1:1 ratio - square tiles)
     final tileWidth = screenSize.width / gridWidth;
     final tileHeight = screenSize.height / gridHeight;
+    
+    // Use the smaller dimension to ensure tiles are square (1:1 ratio)
     final tileSize = tileWidth < tileHeight ? tileWidth : tileHeight;
     
-    // Calculate actual map size based on calculated tile size
-    final double gameWidth = gridWidth * tileSize;
-    final double gameHeight = gridHeight * tileSize;
+    // Calculate actual map size based on SQUARE tiles (1:1 ratio guaranteed)
+    final double gameWidth = gridWidth * tileSize;   // All tiles use same size
+    final double gameHeight = gridHeight * tileSize; // All tiles use same size
     
     return Scaffold(
       backgroundColor: Colors.black,
       body: Stack(
         children: [
-          // Center - Game map (constrained to actual map size)
+          // Center - Game map (constrained to actual map size with 1:1 ratio tiles)
           Center(
             child: SizedBox(
               width: gameWidth,
