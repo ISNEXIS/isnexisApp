@@ -7,7 +7,7 @@ class VirtualJoystick extends StatefulWidget {
   const VirtualJoystick({
     super.key,
     required this.onDirectionChanged,
-    this.size = 100,
+    this.size = 200,
   });
 
   @override
@@ -22,7 +22,7 @@ class _VirtualJoystickState extends State<VirtualJoystick> {
     final center = Offset(widget.size / 2, widget.size / 2);
     final delta = localPosition - center;
     final distance = delta.distance;
-    final maxDistance = widget.size / 2 - 20; // Leave room for knob
+    final maxDistance = widget.size / 2; // Leave room for knob
 
     if (distance > maxDistance) {
       // Clamp to circle boundary
@@ -70,8 +70,8 @@ class _VirtualJoystickState extends State<VirtualJoystick> {
         _resetJoystick();
       },
       child: Container(
-        width: widget.size,
-        height: widget.size,
+        width: widget.size * 1.5,
+        height: widget.size * 1.5,
         decoration: BoxDecoration(
           shape: BoxShape.circle,
           color: Colors.grey.withOpacity(0.3),
@@ -85,8 +85,8 @@ class _VirtualJoystickState extends State<VirtualJoystick> {
           children: [
             // Background circle
             Container(
-              width: widget.size,
-              height: widget.size,
+              width: widget.size * 1.5,
+              height: widget.size * 1.5,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
                 color: Colors.grey.withOpacity(0.2),
@@ -96,8 +96,8 @@ class _VirtualJoystickState extends State<VirtualJoystick> {
             Transform.translate(
               offset: _knobPosition,
               child: Container(
-                width: 40,
-                height: 40,
+                width: 60,
+                height: 60,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
                   color: _isDragging ? Colors.white : Colors.white.withOpacity(0.8),
