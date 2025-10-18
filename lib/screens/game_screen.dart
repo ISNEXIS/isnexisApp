@@ -119,8 +119,25 @@ class _GameScreenState extends State<GameScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  // Header
+                  const Text(
+                    'Status',
+                    style: TextStyle(
+                      color: Colors.white70,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      letterSpacing: 1.2,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  // Divider
+                  Container(
+                    height: 1,
+                    color: Colors.white.withOpacity(0.2),
+                  ),
+                  const SizedBox(height: 12),
                   Text(
-                    '❤️ Health: ${widget.game.playerHealth}',
+                    '❤️ : ${widget.game.playerHealth}',
                     style: const TextStyle(
                       color: Colors.white,
                       fontSize: 18,
@@ -129,7 +146,8 @@ class _GameScreenState extends State<GameScreen> {
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    '⭐ Score: ${widget.game.score}',
+                    // add
+                    '⭐ : ${widget.game.score}',
                     style: const TextStyle(
                       color: Colors.white,
                       fontSize: 18,
@@ -138,7 +156,7 @@ class _GameScreenState extends State<GameScreen> {
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    '💥 Radius: ${player?.explosionRadius.toInt() ?? 1}',
+                    '💥 : ${player?.explosionRadius.toInt() ?? 1}',
                     style: const TextStyle(
                       color: Colors.white,
                       fontSize: 18,
@@ -147,7 +165,7 @@ class _GameScreenState extends State<GameScreen> {
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    '💣 Bombs: ${widget.game.bombs.length}',
+                    '💣 : ${widget.game.bombs.length}',
                     style: const TextStyle(
                       color: Colors.white,
                       fontSize: 18,
