@@ -75,10 +75,10 @@ class _GameScreenState extends State<GameScreen> {
             ),
           ),
           
-          // Top Left - Stats (Health & Score)
+          // Top Right - All Stats in One Box
           Positioned(
             top: 20,
-            left: 20,
+            right: 20,
             child: Container(
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
@@ -109,28 +109,7 @@ class _GameScreenState extends State<GameScreen> {
                       fontWeight: FontWeight.bold,
                     ),
                   ),
-                ],
-              ),
-            ),
-          ),
-          
-          // Top Right - Power Stats
-          Positioned(
-            top: 20,
-            right: 20,
-            child: Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: const Color(0xFF1A1A1A).withOpacity(0.9),
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(
-                  color: Colors.white.withOpacity(0.3),
-                  width: 2,
-                ),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
+                  const SizedBox(height: 8),
                   Text(
                     '💥 Radius: ${player?.explosionRadius.toInt() ?? 1}',
                     style: const TextStyle(
