@@ -52,34 +52,22 @@ class BombGame extends FlameGame with HasKeyboardHandlerComponents, ChangeNotifi
   }
   
   void _initializeGame() {
-    // Calculate tile size to fill the available screen space
-    // Only account for sidebar (180px) - controls panel is within game area
-    const sidebarWidth = 180.0;
-    
-    // Available space for the game (controls are overlaid, not subtracted)
-    final availableWidth = size.x - sidebarWidth;
-    final availableHeight = size.y;
-    
+    // PLAYABLE AREA: 15x13 tiles
+    // TOTAL MAP SIZE: 17x15 tiles (15+2 borders horizontally, 13+2 borders vertically)
+    gridWidth = 17;
+    gridHeight = 15;
+
     // Validate we have proper dimensions
-    if (availableWidth <= 0 || availableHeight <= 0) {
+    if (size.x <= 0 || size.y <= 0) {
       return;
     }
     
-    // FIXED MAP SIZE - 16:9 aspect ratio with proper tile count
-    // Using a good balance: 51x27 tiles (17:9 ratio, close to 16:9)
-    // Alternative options: 48x27, 45x25, 51x29
-    gridWidth = 51;  // Fixed grid width (horizontal)
-    gridHeight = 27; // Fixed grid height (vertical) - gives ~1.89:1 ratio (close to 16:9 = 1.78:1)
+    // Calculate tile size to fit the screen perfectly
+    // Calculate based on screen dimensions divided by grid size
+    final tileWidth = size.x / gridWidth;
+    final tileHeight = size.y / gridHeight;
     
-    // Ensure grid dimensions are odd for proper bomb-it style gameplay
-    if (gridWidth % 2 == 0) gridWidth -= 1;
-    if (gridHeight % 2 == 0) gridHeight -= 1;
-    
-    // DYNAMIC TILE SIZE - Calculate to fit the screen
-    final tileWidth = availableWidth / gridWidth;
-    final tileHeight = availableHeight / gridHeight;
-    
-    // Use the smaller dimension to ensure everything fits
+    // Use the smaller dimension to ensure the entire map fits on screen
     tileSize = tileWidth < tileHeight ? tileWidth : tileHeight;
     
     // Center camera on map
