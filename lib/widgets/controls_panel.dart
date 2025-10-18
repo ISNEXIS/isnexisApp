@@ -15,7 +15,7 @@ class ControlsPanel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      height: 150,
+      height: 200,
       decoration: BoxDecoration(
         color: const Color(0xFF1A1A1A).withOpacity(0.9),
         border: Border(
