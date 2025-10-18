@@ -59,6 +59,7 @@ class _IsnexisState extends State<Isnexis> {
                       showGameOver = true;
                     });
                   },
+                  onBackToMenu: _goToMainMenu,
                 ),
                 // Game over overlay modal
                 if (showGameOver)

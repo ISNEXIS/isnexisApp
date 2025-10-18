@@ -241,11 +241,16 @@ class BombGame extends FlameGame with HasKeyboardHandlerComponents, ChangeNotifi
         
         final tileType = gameMap[explodePos.y.toInt()][explodePos.x.toInt()];
         
-        // Explode this position
+        // Stop explosion if we hit an unbreakable wall (don't show effect)
+        if (tileType == TileType.wall) {
+          break;
+        }
+        
+        // Explode this position (only for empty or destructible tiles)
         _explodePosition(explodePos);
         
-        // Stop explosion if we hit a wall or destructible (after destroying it)
-        if (tileType == TileType.wall || tileType == TileType.destructible) {
+        // Stop explosion if we hit a destructible (after destroying it)
+        if (tileType == TileType.destructible) {
           break;
         }
       }

@@ -9,11 +9,13 @@ import '../widgets/virtual_joystick.dart';
 class GameScreen extends StatefulWidget {
   final BombGame game;
   final VoidCallback onGameOver;
+  final VoidCallback onBackToMenu;
 
   const GameScreen({
     super.key,
     required this.game,
     required this.onGameOver,
+    required this.onBackToMenu,
   });
 
   @override
@@ -75,46 +77,32 @@ class _GameScreenState extends State<GameScreen> {
             ),
           ),
           
-          // Top Left - Stats (Health & Score)
+          // Top Left - Pause Button
           Positioned(
             top: 20,
             left: 20,
-            child: Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: const Color(0xFF1A1A1A).withOpacity(0.9),
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(
+            child: IconButton(
+              onPressed: () {
+                widget.game.paused = !widget.game.paused;
+                setState(() {});
+              },
+              icon: Icon(
+                widget.game.paused ? Icons.play_arrow : Icons.pause,
+                color: Colors.white,
+                size: 32,
+              ),
+              style: IconButton.styleFrom(
+                backgroundColor: const Color(0xFF1A1A1A).withOpacity(0.9),
+                padding: const EdgeInsets.all(12),
+                side: BorderSide(
                   color: Colors.white.withOpacity(0.3),
                   width: 2,
                 ),
               ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    '❤️ Health: ${widget.game.playerHealth}',
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    '⭐ Score: ${widget.game.score}',
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ],
-              ),
             ),
           ),
           
-          // Top Right - Power Stats
+          // Top Right - All Stats in One Box
           Positioned(
             top: 20,
             right: 20,
@@ -131,8 +119,25 @@ class _GameScreenState extends State<GameScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  // Header
+                  const Text(
+                    'Status',
+                    style: TextStyle(
+                      color: Colors.white70,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      letterSpacing: 1.2,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  // Divider
+                  Container(
+                    height: 1,
+                    color: Colors.white.withOpacity(0.2),
+                  ),
+                  const SizedBox(height: 12),
                   Text(
-                    '💥 Radius: ${player?.explosionRadius.toInt() ?? 1}',
+                    '❤️ : ${widget.game.playerHealth}',
                     style: const TextStyle(
                       color: Colors.white,
                       fontSize: 18,
@@ -141,7 +146,26 @@ class _GameScreenState extends State<GameScreen> {
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    '💣 Bombs: ${widget.game.bombs.length}',
+                    // add
+                    '⭐ : ${widget.game.score}',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    '💥 : ${player?.explosionRadius.toInt() ?? 1}',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    '💣 : ${widget.game.bombs.length}',
                     style: const TextStyle(
                       color: Colors.white,
                       fontSize: 18,
@@ -186,6 +210,102 @@ class _GameScreenState extends State<GameScreen> {
               ),
             ),
           ),
+          
+          // Pause Overlay
+          if (widget.game.paused)
+            Container(
+              color: Colors.black.withOpacity(0.7),
+              child: Center(
+                child: Container(
+                  padding: const EdgeInsets.all(32),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF1A1A1A).withOpacity(0.95),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(
+                      color: Colors.white.withOpacity(0.3),
+                      width: 3,
+                    ),
+                  ),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Text(
+                        'PAUSED',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 48,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      const SizedBox(height: 40),
+                      // Resume Button
+                      SizedBox(
+                        width: 200,
+                        height: 60,
+                        child: ElevatedButton(
+                          onPressed: () {
+                            setState(() {
+                              widget.game.paused = false;
+                            });
+                          },
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.green,
+                            foregroundColor: Colors.white,
+                            textStyle: const TextStyle(
+                              fontSize: 24,
+                              fontWeight: FontWeight.bold,
+                            ),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                          ),
+                          child: const Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(Icons.play_arrow, size: 32),
+                              SizedBox(width: 8),
+                              Text('Resume'),
+                            ],
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 20),
+                      // Back to Menu Button
+                      SizedBox(
+                        width: 200,
+                        height: 60,
+                        child: ElevatedButton(
+                          onPressed: () {
+                            // Unpause and go back to menu
+                            widget.game.paused = false;
+                            widget.onBackToMenu();
+                          },
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.grey[800],
+                            foregroundColor: Colors.white,
+                            textStyle: const TextStyle(
+                              fontSize: 24,
+                              fontWeight: FontWeight.bold,
+                            ),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                          ),
+                          child: const Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(Icons.home, size: 32),
+                              SizedBox(width: 8),
+                              Text('Menu'),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
         ],
       ),
     );
