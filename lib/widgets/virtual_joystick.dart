@@ -70,8 +70,8 @@ class _VirtualJoystickState extends State<VirtualJoystick> {
         _resetJoystick();
       },
       child: Container(
-        width: widget.size * 1.5,
-        height: widget.size * 1.5,
+        width: widget.size,
+        height: widget.size,
         decoration: BoxDecoration(
           shape: BoxShape.circle,
           color: Colors.grey.withOpacity(0.3),
@@ -85,8 +85,8 @@ class _VirtualJoystickState extends State<VirtualJoystick> {
           children: [
             // Background circle
             Container(
-              width: widget.size * 1.5,
-              height: widget.size * 1.5,
+              width: widget.size,
+              height: widget.size,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
                 color: Colors.grey.withOpacity(0.2),
