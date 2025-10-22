@@ -3,39 +3,83 @@ import 'package:flutter/material.dart';
 
 import 'tile_type.dart';
 
-class MapTile extends RectangleComponent {
+class MapTile extends PositionComponent {
   final Vector2 gridPosition;
   TileType tileType;
   final double tileSize;
+
+  // Components for rendering
+  SpriteComponent? spriteComponent;
+  RectangleComponent? rectangleComponent;
 
   MapTile({
     required this.gridPosition,
     required this.tileType,
     required this.tileSize,
   }) : super(
-          position: Vector2(
-            gridPosition.x * tileSize,
-            gridPosition.y * tileSize,
-          ),
-          size: Vector2.all(tileSize),
-        );
+         position: Vector2(
+           gridPosition.x * tileSize,
+           gridPosition.y * tileSize,
+         ),
+         size: Vector2.all(tileSize),
+       );
 
   @override
   Future<void> onLoad() async {
-    _updateColor();
+    await _loadTileGraphics();
   }
 
-  void _updateColor() {
+  Future<void> _loadTileGraphics() async {
+    // Remove existing components
+    if (spriteComponent != null) {
+      spriteComponent!.removeFromParent();
+      spriteComponent = null;
+    }
+    if (rectangleComponent != null) {
+      rectangleComponent!.removeFromParent();
+      rectangleComponent = null;
+    }
+
+    // Try to load sprite, fall back to colored rectangle
+    try {
+      final spritePath = _getSpritePath();
+      if (spritePath != null) {
+        final sprite = await Sprite.load(spritePath);
+        spriteComponent = SpriteComponent(sprite: sprite, size: size);
+        add(spriteComponent!);
+        return;
+      }
+    } catch (e) {
+      // Sprite not found, fall through to rectangle
+    }
+
+    // Use colored rectangle as fallback
+    rectangleComponent = RectangleComponent(
+      size: size,
+      paint: Paint()..color = _getColor(),
+    );
+    add(rectangleComponent!);
+  }
+
+  String? _getSpritePath() {
     switch (tileType) {
       case TileType.empty:
-        paint = Paint()..color = Colors.green[100]!;
-        break;
+        return 'tiles/ground.png';
       case TileType.wall:
-        paint = Paint()..color = Colors.grey[800]!;
-        break;
+        return 'tiles/wall.png';
       case TileType.destructible:
-        paint = Paint()..color = Colors.brown[400]!;
-        break;
+        return 'tiles/destructible.png';
+    }
+  }
+
+  Color _getColor() {
+    switch (tileType) {
+      case TileType.empty:
+        return Colors.green[100]!;
+      case TileType.wall:
+        return Colors.grey[800]!;
+      case TileType.destructible:
+        return Colors.brown[400]!;
     }
   }
 
@@ -47,8 +91,8 @@ class MapTile extends RectangleComponent {
     return tileType == TileType.destructible;
   }
 
-  void updateTileType(TileType newType) {
+  Future<void> updateTileType(TileType newType) async {
     tileType = newType;
-    _updateColor();
+    await _loadTileGraphics();
   }
 }

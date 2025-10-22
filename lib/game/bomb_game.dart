@@ -9,31 +9,35 @@ import 'components/bomb.dart';
 import 'components/explosion_effect.dart';
 import 'components/map_tile.dart';
 import 'components/player.dart';
+import 'components/player_character.dart';
 import 'components/tile_type.dart';
 
-class BombGame extends FlameGame with HasKeyboardHandlerComponents, ChangeNotifier {
-  late int gridWidth;  // Will be calculated based on screen size
+class BombGame extends FlameGame
+    with HasKeyboardHandlerComponents, ChangeNotifier {
+  late int gridWidth; // Will be calculated based on screen size
   late int gridHeight; // Will be calculated based on screen size
   late double tileSize; // Will be calculated to fill available screen space
-  
+
   late List<List<TileType>> gameMap;
-  Player? player; // Make nullable to avoid LateInitializationError
+  List<Player> players = []; // Support multiple players
+  final List<PlayerCharacter> playerCharacters;
   Offset joystickDirection = Offset.zero; // Flutter joystick direction
   List<Bomb> bombs = [];
   bool isGameOver = false;
   late Function(bool) onGameStateChanged; // Callback to notify main app
-  
-  // Player stats
-  int playerHealth = 1;
+
+  // Player stats (for tracking overall game state)
   int maxBombs = 1; // Maximum bombs that can be placed at once (upgradeable)
   int score = 0;
-  
-  // Invincibility state
-  bool isPlayerInvincible = false;
-  double invincibilityTimer = 0.0;
+
+  // Invincibility state for each player
+  List<bool> playerInvincibility = [false, false, false, false];
+  List<double> invincibilityTimers = [0.0, 0.0, 0.0, 0.0];
   static const double invincibilityDuration = 2.0; // 2 seconds of invincibility
 
-  BombGame({required this.onGameStateChanged});
+  int alivePlayers = 0;
+
+  BombGame({required this.onGameStateChanged, required this.playerCharacters});
 
   @override
   Color backgroundColor() => const Color(0xFF2E7D32);
@@ -41,16 +45,16 @@ class BombGame extends FlameGame with HasKeyboardHandlerComponents, ChangeNotifi
   @override
   Future<void> onLoad() async {
     await super.onLoad();
-    
+
     // Wait for the game size to be properly set
     if (size.x == 0 || size.y == 0) {
       // Defer initialization until size is available
       return;
     }
-    
+
     _initializeGame();
   }
-  
+
   void _initializeGame() {
     // PLAYABLE AREA: 15x13 tiles
     // TOTAL MAP SIZE: 17x15 tiles (15+2 borders horizontally, 13+2 borders vertically)
@@ -61,32 +65,32 @@ class BombGame extends FlameGame with HasKeyboardHandlerComponents, ChangeNotifi
     if (size.x <= 0 || size.y <= 0) {
       return;
     }
-    
+
     // Calculate tile size to fit the screen perfectly
     // Calculate based on screen dimensions divided by grid size
     final tileWidth = size.x / gridWidth;
     final tileHeight = size.y / gridHeight;
-    
+
     // Use the smaller dimension to ensure the entire map fits on screen
     tileSize = tileWidth < tileHeight ? tileWidth : tileHeight;
-    
+
     // Center camera on map
     camera.viewfinder.anchor = Anchor.center;
     camera.viewfinder.position = Vector2(
       (gridWidth * tileSize) / 2,
       (gridHeight * tileSize) / 2,
     );
-    
+
     // Initialize the game map
     _generateMap();
     _renderMap();
     _spawnPlayer();
   }
-  
+
   @override
   void onGameResize(Vector2 size) {
     super.onGameResize(size);
-    
+
     // Initialize game when size becomes available
     if (children.isEmpty && size.x > 0 && size.y > 0) {
       _initializeGame();
@@ -94,49 +98,56 @@ class BombGame extends FlameGame with HasKeyboardHandlerComponents, ChangeNotifi
   }
 
   void _generateMap() {
-    gameMap = List.generate(gridHeight, (y) => List.generate(gridWidth, (x) {
-      // Create border walls
-      if (x == 0 || x == gridWidth - 1 || y == 0 || y == gridHeight - 1) {
-        return TileType.wall;
-      }
-      
-      // Create inner structural walls (every other tile starting from even positions)
-      if (x % 2 == 0 && y % 2 == 0) {
-        return TileType.wall;
-      }
-      
-      // Player 1 spawn area (top-left corner) - must be clear
-      if ((x == 1 && y == 1) || // Player spawn
-          (x == 2 && y == 1) || // Right of player
-          (x == 1 && y == 2)) { // Below player
-        return TileType.empty;
-      }
-      
-      // Player 2 spawn area (top-right corner) - must be clear
-      if ((x == gridWidth - 2 && y == 1) || // Player spawn
-          (x == gridWidth - 3 && y == 1) || // Left of player
-          (x == gridWidth - 2 && y == 2)) { // Below player
-        return TileType.empty;
-      }
-      
-      // Player 3 spawn area (bottom-left corner) - must be clear
-      if ((x == 1 && y == gridHeight - 2) || // Player spawn
-          (x == 2 && y == gridHeight - 2) || // Right of player
-          (x == 1 && y == gridHeight - 3)) { // Above player
-        return TileType.empty;
-      }
-      
-      // Player 4 spawn area (bottom-right corner) - must be clear
-      if ((x == gridWidth - 2 && y == gridHeight - 2) || // Player spawn
-          (x == gridWidth - 3 && y == gridHeight - 2) || // Left of player
-          (x == gridWidth - 2 && y == gridHeight - 3)) { // Above player
-        return TileType.empty;
-      }
-      
-      // Fill all remaining spaces with destructible walls
-      // This creates a maze that must be cleared with bombs
-      return TileType.destructible;
-    }));
+    gameMap = List.generate(
+      gridHeight,
+      (y) => List.generate(gridWidth, (x) {
+        // Create border walls
+        if (x == 0 || x == gridWidth - 1 || y == 0 || y == gridHeight - 1) {
+          return TileType.wall;
+        }
+
+        // Create inner structural walls (every other tile starting from even positions)
+        if (x % 2 == 0 && y % 2 == 0) {
+          return TileType.wall;
+        }
+
+        // Player 1 spawn area (top-left corner) - must be clear
+        if ((x == 1 && y == 1) || // Player spawn
+            (x == 2 && y == 1) || // Right of player
+            (x == 1 && y == 2)) {
+          // Below player
+          return TileType.empty;
+        }
+
+        // Player 2 spawn area (top-right corner) - must be clear
+        if ((x == gridWidth - 2 && y == 1) || // Player spawn
+            (x == gridWidth - 3 && y == 1) || // Left of player
+            (x == gridWidth - 2 && y == 2)) {
+          // Below player
+          return TileType.empty;
+        }
+
+        // Player 3 spawn area (bottom-left corner) - must be clear
+        if ((x == 1 && y == gridHeight - 2) || // Player spawn
+            (x == 2 && y == gridHeight - 2) || // Right of player
+            (x == 1 && y == gridHeight - 3)) {
+          // Above player
+          return TileType.empty;
+        }
+
+        // Player 4 spawn area (bottom-right corner) - must be clear
+        if ((x == gridWidth - 2 && y == gridHeight - 2) || // Player spawn
+            (x == gridWidth - 3 && y == gridHeight - 2) || // Left of player
+            (x == gridWidth - 2 && y == gridHeight - 3)) {
+          // Above player
+          return TileType.empty;
+        }
+
+        // Fill all remaining spaces with destructible walls
+        // This creates a maze that must be cleared with bombs
+        return TileType.destructible;
+      }),
+    );
   }
 
   void _renderMap() {
@@ -153,19 +164,38 @@ class BombGame extends FlameGame with HasKeyboardHandlerComponents, ChangeNotifi
   }
 
   void _spawnPlayer() {
-    // Spawn player 1 at top-left corner with clear movement space
-    player = Player(
-      gridPosition: Vector2(1, 1),
-      color: Colors.blue,
-      tileSize: tileSize,
-      gridWidth: gridWidth,
-      gridHeight: gridHeight,
-      getGameMap: () => gameMap,
-      getIsGameOver: () => isGameOver,
-      getJoystickDirection: () => Vector2(joystickDirection.dx, joystickDirection.dy),
-    );
-    player!.playerHealth = 1; // Initialize player health
-    add(player!);
+    // Spawn positions for up to 4 players (corners of the map)
+    final spawnPositions = [
+      Vector2(1, 1), // Top-left
+      Vector2(gridWidth - 2, 1), // Top-right
+      Vector2(1, gridHeight - 2), // Bottom-left
+      Vector2(gridWidth - 2, gridHeight - 2), // Bottom-right
+    ];
+
+    // Clear existing players
+    players.clear();
+    alivePlayers = playerCharacters.length;
+
+    // Spawn each player
+    for (int i = 0; i < playerCharacters.length; i++) {
+      final player = Player(
+        gridPosition: spawnPositions[i],
+        color: playerCharacters[i].fallbackColor,
+        character: playerCharacters[i],
+        playerNumber: i + 1,
+        tileSize: tileSize,
+        gridWidth: gridWidth,
+        gridHeight: gridHeight,
+        getGameMap: () => gameMap,
+        getIsGameOver: () => isGameOver,
+        getJoystickDirection: () => i == 0
+            ? Vector2(joystickDirection.dx, joystickDirection.dy)
+            : Vector2.zero(), // Only player 1 uses joystick for now
+      );
+      player.playerHealth = 1; // Initialize player health
+      players.add(player);
+      add(player);
+    }
   }
 
   // Method to update joystick direction from Flutter widget
@@ -174,57 +204,74 @@ class BombGame extends FlameGame with HasKeyboardHandlerComponents, ChangeNotifi
   }
 
   bool canMoveToPosition(Vector2 gridPos) {
-    if (gridPos.x < 0 || gridPos.x >= gridWidth || 
-        gridPos.y < 0 || gridPos.y >= gridHeight) {
+    if (gridPos.x < 0 ||
+        gridPos.x >= gridWidth ||
+        gridPos.y < 0 ||
+        gridPos.y >= gridHeight) {
       return false;
     }
     return gameMap[gridPos.y.toInt()][gridPos.x.toInt()] == TileType.empty;
   }
 
   void placeBomb() {
-    if (isGameOver || player == null) return;
-    
+    if (isGameOver || players.isEmpty) return;
+
+    // Place bomb for player 1 (controlled by keyboard/joystick)
+    // In the future, this can be extended to handle multiple player inputs
+    final activePlayer = players.firstOrNull;
+    if (activePlayer == null) return;
+
     // Check if player has reached maximum bomb limit
     if (bombs.length >= maxBombs) return;
-    
-    final playerGridPos = player!.gridPosition;
-    
+
+    final playerGridPos = activePlayer.gridPosition;
+
     // Check if there's already a bomb at this position
-    final existingBomb = bombs.any((bomb) => 
-        bomb.gridPosition.x.toInt() == playerGridPos.x.toInt() &&
-        bomb.gridPosition.y.toInt() == playerGridPos.y.toInt());
-    
+    final existingBomb = bombs.any(
+      (bomb) =>
+          bomb.gridPosition.x.toInt() == playerGridPos.x.toInt() &&
+          bomb.gridPosition.y.toInt() == playerGridPos.y.toInt(),
+    );
+
     if (!existingBomb) {
       final bomb = Bomb(
         gridPosition: playerGridPos,
         onExplode: explodeBomb,
         tileSize: tileSize,
+        ownerCharacter: activePlayer.character,
+        fallbackColor: activePlayer.color,
       );
       bombs.add(bomb);
       add(bomb);
+
+      // Play bomb throw animation for the active player
+      activePlayer.playBombThrowAnimation();
     }
   }
 
   void explodeBomb(Bomb bomb) {
     bombs.remove(bomb);
     bomb.removeFromParent();
-    
-    // Create explosion with player's radius
-    createExplosion(bomb.gridPosition, player?.explosionRadius.toInt() ?? 1);
+
+    // Create explosion with default radius (can be upgraded per player later)
+    createExplosion(
+      bomb.gridPosition,
+      players.firstOrNull?.explosionRadius.toInt() ?? 1,
+    );
   }
 
   void createExplosion(Vector2 centerPos, int explosionRadius) {
     // Explosion directions (up, down, left, right)
     final directions = [
       Vector2(0, -1), // Up
-      Vector2(0, 1),  // Down  
+      Vector2(0, 1), // Down
       Vector2(-1, 0), // Left
-      Vector2(1, 0),  // Right
+      Vector2(1, 0), // Right
     ];
-    
+
     // Explode center position
     _explodePosition(centerPos);
-    
+
     // Explode in each direction
     for (final direction in directions) {
       for (int i = 1; i <= explosionRadius; i++) {
@@ -232,23 +279,25 @@ class BombGame extends FlameGame with HasKeyboardHandlerComponents, ChangeNotifi
           centerPos.x + (direction.x * i),
           centerPos.y + (direction.y * i),
         );
-        
+
         // Check if position is valid
-        if (explodePos.x < 0 || explodePos.x >= gridWidth ||
-            explodePos.y < 0 || explodePos.y >= gridHeight) {
+        if (explodePos.x < 0 ||
+            explodePos.x >= gridWidth ||
+            explodePos.y < 0 ||
+            explodePos.y >= gridHeight) {
           break; // Stop explosion in this direction
         }
-        
+
         final tileType = gameMap[explodePos.y.toInt()][explodePos.x.toInt()];
-        
+
         // Stop explosion if we hit an unbreakable wall (don't show effect)
         if (tileType == TileType.wall) {
           break;
         }
-        
+
         // Explode this position (only for empty or destructible tiles)
         _explodePosition(explodePos);
-        
+
         // Stop explosion if we hit a destructible (after destroying it)
         if (tileType == TileType.destructible) {
           break;
@@ -260,22 +309,19 @@ class BombGame extends FlameGame with HasKeyboardHandlerComponents, ChangeNotifi
   void _explodePosition(Vector2 pos) {
     final x = pos.x.toInt();
     final y = pos.y.toInt();
-    
+
     // Create explosion effect
-    final explosion = ExplosionEffect(
-      gridPosition: pos,
-      tileSize: tileSize,
-    );
+    final explosion = ExplosionEffect(gridPosition: pos, tileSize: tileSize);
     add(explosion);
-    
+
     // Check if player is at this position
     _checkPlayerDamage(pos);
-    
+
     // Destroy destructible walls
     if (gameMap[y][x] == TileType.destructible) {
       gameMap[y][x] = TileType.empty;
       score += 10; // Add points for destroying walls
-      
+
       // Update the visual tile
       _updateTileVisual(pos);
     }
@@ -285,7 +331,8 @@ class BombGame extends FlameGame with HasKeyboardHandlerComponents, ChangeNotifi
     // Find and update the tile component
     final tileComponents = children.whereType<MapTile>();
     for (final tile in tileComponents) {
-      if (tile.gridPosition.x == gridPos.x && tile.gridPosition.y == gridPos.y) {
+      if (tile.gridPosition.x == gridPos.x &&
+          tile.gridPosition.y == gridPos.y) {
         tile.updateTileType(TileType.empty);
         break;
       }
@@ -293,29 +340,40 @@ class BombGame extends FlameGame with HasKeyboardHandlerComponents, ChangeNotifi
   }
 
   void _checkPlayerDamage(Vector2 explosionPos) {
-    if (isGameOver || player == null) return;
-    
-    // Don't damage player if they're invincible
-    if (isPlayerInvincible) return;
-    
-    // Check if player's grid position matches explosion position
-    final playerGridX = player!.gridPosition.x.toInt();
-    final playerGridY = player!.gridPosition.y.toInt();
+    if (isGameOver) return;
+
     final explosionX = explosionPos.x.toInt();
     final explosionY = explosionPos.y.toInt();
-    
-    if (playerGridX == explosionX && playerGridY == explosionY) {
-      // Reduce player health by 1
-      playerHealth--;
-      player!.playerHealth--;
-      
-      // Activate invincibility
-      isPlayerInvincible = true;
-      invincibilityTimer = invincibilityDuration;
-      
-      // Check if player is dead
-      if (playerHealth <= 0) {
-        _gameOver();
+
+    // Check each player
+    for (int i = 0; i < players.length; i++) {
+      final player = players[i];
+
+      // Skip if player is already dead or invincible
+      if (player.playerHealth <= 0 || playerInvincibility[i]) continue;
+
+      // Check if player's grid position matches explosion position
+      final playerGridX = player.gridPosition.x.toInt();
+      final playerGridY = player.gridPosition.y.toInt();
+
+      if (playerGridX == explosionX && playerGridY == explosionY) {
+        // Reduce player health by 1
+        player.playerHealth--;
+
+        // Activate invincibility
+        playerInvincibility[i] = true;
+        invincibilityTimers[i] = invincibilityDuration;
+
+        // Check if player is dead
+        if (player.playerHealth <= 0) {
+          alivePlayers--;
+          player.removeFromParent();
+
+          // Check if game is over (only one or no players left)
+          if (alivePlayers <= 1) {
+            _gameOver();
+          }
+        }
       }
     }
   }
@@ -323,51 +381,55 @@ class BombGame extends FlameGame with HasKeyboardHandlerComponents, ChangeNotifi
   void _gameOver() {
     isGameOver = true;
     paused = true;
-    playerHealth = 0;
     onGameStateChanged(true); // Notify that game is over
   }
 
   void restartGame() {
     isGameOver = false;
     paused = false;
-    playerHealth = 1;
     maxBombs = 1; // Reset to default
     score = 0;
-    
-    // Reset invincibility
-    isPlayerInvincible = false;
-    invincibilityTimer = 0.0;
-    
+    alivePlayers = playerCharacters.length;
+
+    // Reset invincibility for all players
+    playerInvincibility = [false, false, false, false];
+    invincibilityTimers = [0.0, 0.0, 0.0, 0.0];
+
     // Clear existing components
     removeAll(children.whereType<Bomb>());
     removeAll(children.whereType<ExplosionEffect>());
     removeAll(children.whereType<Player>());
     removeAll(children.whereType<JoystickComponent>());
-    removeAll(children.whereType<RectangleComponent>()); // Remove any backgrounds
+    removeAll(
+      children.whereType<RectangleComponent>(),
+    ); // Remove any backgrounds
     bombs.clear();
-    
-    // Regenerate map and respawn player
+
+    // Regenerate map and respawn players
     removeAll(children.whereType<MapTile>());
     _generateMap();
     _renderMap();
     _spawnPlayer();
-    
+
     onGameStateChanged(false); // Notify that game restarted
   }
 
   @override
-  KeyEventResult onKeyEvent(KeyEvent event, Set<LogicalKeyboardKey> keysPressed) {
+  KeyEventResult onKeyEvent(
+    KeyEvent event,
+    Set<LogicalKeyboardKey> keysPressed,
+  ) {
     if (isGameOver) return KeyEventResult.ignored;
-    
+
     // Handle bomb placement with spacebar
     if (event is KeyDownEvent && event.logicalKey == LogicalKeyboardKey.space) {
       placeBomb();
       return KeyEventResult.handled;
     }
-    
+
     // Calculate movement direction based on currently pressed keys
     Vector2 direction = Vector2.zero();
-    
+
     if (keysPressed.contains(LogicalKeyboardKey.keyW)) {
       direction.y -= 1;
     }
@@ -380,44 +442,70 @@ class BombGame extends FlameGame with HasKeyboardHandlerComponents, ChangeNotifi
     if (keysPressed.contains(LogicalKeyboardKey.keyD)) {
       direction.x += 1;
     }
-    
+
     // Normalize diagonal movement
     if (direction.length > 0) {
       direction = direction.normalized();
     }
-    
+
     // Only use keyboard if joystick is not being used
-    if (joystickDirection.distance < 0.1) {
-      player?.setMovement(direction);
+    // Control player 1 with keyboard
+    if (joystickDirection.distance < 0.1 && players.isNotEmpty) {
+      players.first.setMovement(direction);
     }
-    
+
     return super.onKeyEvent(event, keysPressed);
   }
 
   @override
   void update(double dt) {
     super.update(dt);
-    
-    // Update invincibility timer
-    if (isPlayerInvincible) {
-      invincibilityTimer -= dt;
-      
-      if (invincibilityTimer <= 0) {
-        isPlayerInvincible = false;
-        invincibilityTimer = 0.0;
-      }
-      
-      // Visual feedback: make player flash by changing opacity
-      if (player != null) {
-        // Flash effect: alternates visibility every 0.2 seconds
-        final flashInterval = 0.2;
-        final flashPhase = (invincibilityTimer % flashInterval) / flashInterval;
-        player!.paint.color = player!.color.withOpacity(flashPhase > 0.5 ? 1.0 : 0.3);
-      }
-    } else {
-      // Restore full opacity when not invincible
-      if (player != null) {
-        player!.paint.color = player!.color.withOpacity(1.0);
+
+    // Update invincibility timer for each player
+    for (int i = 0; i < players.length; i++) {
+      if (playerInvincibility[i]) {
+        invincibilityTimers[i] -= dt;
+
+        if (invincibilityTimers[i] <= 0) {
+          playerInvincibility[i] = false;
+          invincibilityTimers[i] = 0.0;
+        }
+
+        // Visual feedback: make player flash by changing opacity
+        final player = players[i];
+        if (player.playerHealth > 0) {
+          // Flash effect: alternates visibility every 0.2 seconds
+          final flashInterval = 0.2;
+          final flashPhase =
+              (invincibilityTimers[i] % flashInterval) / flashInterval;
+
+          // Update opacity for all component types
+          if (player.rectangleComponent != null) {
+            player.rectangleComponent!.paint.color = player.color.withOpacity(
+              flashPhase > 0.5 ? 1.0 : 0.3,
+            );
+          } else if (player.animationGroupComponent != null) {
+            player.animationGroupComponent!.opacity = flashPhase > 0.5
+                ? 1.0
+                : 0.3;
+          } else if (player.spriteComponent != null) {
+            player.spriteComponent!.opacity = flashPhase > 0.5 ? 1.0 : 0.3;
+          }
+        }
+      } else {
+        // Restore full opacity when not invincible
+        final player = players[i];
+        if (player.playerHealth > 0) {
+          if (player.rectangleComponent != null) {
+            player.rectangleComponent!.paint.color = player.color.withOpacity(
+              1.0,
+            );
+          } else if (player.animationGroupComponent != null) {
+            player.animationGroupComponent!.opacity = 1.0;
+          } else if (player.spriteComponent != null) {
+            player.spriteComponent!.opacity = 1.0;
+          }
+        }
       }
     }
   }
