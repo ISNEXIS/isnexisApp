@@ -44,26 +44,27 @@ class _GameScreenState extends State<GameScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final player = widget.game.player;
-    
+    final players = widget.game.players;
+    final firstPlayer = players.isNotEmpty ? players.first : null;
+
     // Get screen dimensions
     final screenSize = MediaQuery.of(context).size;
-    
+
     // Map grid: 17×15 tiles (15×13 playable + 1 border on each side)
     const int gridWidth = 17;
     const int gridHeight = 15;
-    
+
     // Calculate tile size to fit screen (ensuring 1:1 ratio - square tiles)
     final tileWidth = screenSize.width / gridWidth;
     final tileHeight = screenSize.height / gridHeight;
-    
+
     // Use the smaller dimension to ensure tiles are square (1:1 ratio)
     final tileSize = tileWidth < tileHeight ? tileWidth : tileHeight;
-    
+
     // Calculate actual map size based on SQUARE tiles (1:1 ratio guaranteed)
-    final double gameWidth = gridWidth * tileSize;   // All tiles use same size
+    final double gameWidth = gridWidth * tileSize; // All tiles use same size
     final double gameHeight = gridHeight * tileSize; // All tiles use same size
-    
+
     return Scaffold(
       backgroundColor: Colors.black,
       body: Stack(
@@ -76,7 +77,7 @@ class _GameScreenState extends State<GameScreen> {
               child: GameWidget(game: widget.game),
             ),
           ),
-          
+
           // Top Left - Pause Button
           Positioned(
             top: 20,
@@ -101,7 +102,7 @@ class _GameScreenState extends State<GameScreen> {
               ),
             ),
           ),
-          
+
           // Top Right - All Stats in One Box
           Positioned(
             top: 20,
@@ -131,13 +132,10 @@ class _GameScreenState extends State<GameScreen> {
                   ),
                   const SizedBox(height: 12),
                   // Divider
-                  Container(
-                    height: 1,
-                    color: Colors.white.withOpacity(0.2),
-                  ),
+                  Container(height: 1, color: Colors.white.withOpacity(0.2)),
                   const SizedBox(height: 12),
                   Text(
-                    '❤️ : ${widget.game.playerHealth}',
+                    '👥 Alive: ${widget.game.alivePlayers}',
                     style: const TextStyle(
                       color: Colors.white,
                       fontSize: 18,
@@ -145,8 +143,17 @@ class _GameScreenState extends State<GameScreen> {
                     ),
                   ),
                   const SizedBox(height: 8),
+                  if (firstPlayer != null)
+                    Text(
+                      '❤️ P1: ${firstPlayer.playerHealth}',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  const SizedBox(height: 8),
                   Text(
-                    // add
                     '⭐ : ${widget.game.score}',
                     style: const TextStyle(
                       color: Colors.white,
@@ -156,7 +163,7 @@ class _GameScreenState extends State<GameScreen> {
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    '💥 : ${player?.explosionRadius.toInt() ?? 1}',
+                    '💥 : ${firstPlayer?.explosionRadius.toInt() ?? 1}',
                     style: const TextStyle(
                       color: Colors.white,
                       fontSize: 18,
@@ -176,7 +183,7 @@ class _GameScreenState extends State<GameScreen> {
               ),
             ),
           ),
-          
+
           // Bottom Left - Virtual Joystick
           Positioned(
             bottom: 40,
@@ -188,7 +195,7 @@ class _GameScreenState extends State<GameScreen> {
               },
             ),
           ),
-          
+
           // Bottom Right - Bomb Button
           Positioned(
             bottom: 40,
@@ -203,14 +210,11 @@ class _GameScreenState extends State<GameScreen> {
                   shape: const CircleBorder(),
                   padding: EdgeInsets.zero,
                 ),
-                child: const Text(
-                  '💣',
-                  style: TextStyle(fontSize: 50),
-                ),
+                child: const Text('💣', style: TextStyle(fontSize: 50)),
               ),
             ),
           ),
-          
+
           // Pause Overlay
           if (widget.game.paused)
             Container(

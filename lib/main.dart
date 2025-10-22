@@ -4,9 +4,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import 'game/bomb_game.dart';
+import 'game/components/player_character.dart';
 import 'screens/game_over_screen.dart';
 import 'screens/game_screen.dart';
 import 'screens/main_menu.dart';
+import 'screens/player_selection_screen.dart';
 import 'screens/settings_screen.dart';
 
 void main() async {
@@ -37,6 +39,7 @@ class Isnexis extends StatefulWidget {
 class _IsnexisState extends State<Isnexis> {
   bool showGame = false;
   bool showGameOver = false;
+  bool showPlayerSelection = false;
   late BombGame gameInstance;
 
   @override
@@ -69,9 +72,24 @@ class _IsnexisState extends State<Isnexis> {
                   ),
               ],
             );
+          } else if (showPlayerSelection) {
+            return PlayerSelectionScreen(
+              onBack: () {
+                setState(() {
+                  showPlayerSelection = false;
+                });
+              },
+              onStartGame: (selectedCharacters) {
+                _startNewGame(selectedCharacters);
+              },
+            );
           } else {
             return MainMenu(
-              onStart: _startNewGame,
+              onStart: () {
+                setState(() {
+                  showPlayerSelection = true;
+                });
+              },
               onSettings: () => _showSettings(context),
               onExit: () => _exitGame(context),
             );
@@ -81,8 +99,9 @@ class _IsnexisState extends State<Isnexis> {
     );
   }
 
-  void _startNewGame() {
+  void _startNewGame(List<PlayerCharacter> selectedCharacters) {
     gameInstance = BombGame(
+      playerCharacters: selectedCharacters,
       onGameStateChanged: (isGameOver) {
         if (isGameOver) {
           setState(() {
@@ -94,6 +113,7 @@ class _IsnexisState extends State<Isnexis> {
     setState(() {
       showGame = true;
       showGameOver = false;
+      showPlayerSelection = false;
     });
   }
 

@@ -1,11 +1,25 @@
 import 'package:flame/components.dart';
+import 'package:flame/flame.dart';
 import 'package:flutter/material.dart';
 
+import 'player_character.dart';
 import 'tile_type.dart';
 
-class Player extends RectangleComponent {
+// Animation states for the player
+enum PlayerAnimationState {
+  idle,
+  walkDown,
+  walkLeft,
+  walkRight,
+  walkUp,
+  throwBomb,
+}
+
+class Player extends PositionComponent {
   Vector2 gridPosition;
   final Color color;
+  final PlayerCharacter character;
+  final int playerNumber; // 1-4
   static const double moveSpeed = 150.0; // Pixels per second
   final double tileSize;
   final int gridWidth;
@@ -13,7 +27,18 @@ class Player extends RectangleComponent {
   Vector2 velocity = Vector2.zero();
   int explosionRadius = 1; // Player's explosion radius (upgradeable)
   int playerHealth = 1; // Player's health (upgradeable)
-  
+
+  // Components for rendering
+  SpriteComponent? spriteComponent;
+  SpriteAnimationGroupComponent<PlayerAnimationState>? animationGroupComponent;
+  RectangleComponent? rectangleComponent;
+
+  // Animation state
+  PlayerAnimationState currentAnimationState = PlayerAnimationState.idle;
+  bool isThrowingBomb = false;
+  double bombThrowTimer = 0.0;
+  static const double bombThrowDuration = 0.4; // 2 frames at 0.2s each
+
   // Reference to game map - will be set by the game
   late List<List<TileType>> Function() getGameMap;
   late bool Function() getIsGameOver;
@@ -22,6 +47,8 @@ class Player extends RectangleComponent {
   Player({
     required this.gridPosition,
     required this.color,
+    required this.character,
+    required this.playerNumber,
     required this.tileSize,
     required this.gridWidth,
     required this.gridHeight,
@@ -29,27 +56,135 @@ class Player extends RectangleComponent {
     required this.getIsGameOver,
     required this.getJoystickDirection,
   }) : super(
-          position: Vector2(
-            gridPosition.x * tileSize + tileSize * 0.1,
-            gridPosition.y * tileSize + tileSize * 0.1,
-          ),
-          size: Vector2.all(tileSize * 0.8),
-        );
+         position: Vector2(
+           gridPosition.x * tileSize + tileSize * 0.1,
+           gridPosition.y * tileSize + tileSize * 0.1,
+         ),
+         size: Vector2.all(tileSize * 0.8),
+       );
 
   @override
   Future<void> onLoad() async {
-    paint = Paint()..color = color;
+    // Try to load animated sprite for character 1, static sprite for others
+    try {
+      if (character == PlayerCharacter.character1) {
+        // Load sprite sheet for character 1
+        final spriteSheet = await Flame.images.load(
+          'characters/KawinPlayable.png',
+        );
+
+        // Create animations for each direction and state
+        final animations = {
+          // Idle (frame 10, index starts at 0)
+          PlayerAnimationState.idle: SpriteAnimation.fromFrameData(
+            spriteSheet,
+            SpriteAnimationData.sequenced(
+              amount: 1,
+              stepTime: 1.0,
+              textureSize: Vector2(16, 16),
+              texturePosition: Vector2(160, 0), // Frame 10 (10 * 16 = 160)
+            ),
+          ),
+
+          // Walk Down (frames 0-1)
+          PlayerAnimationState.walkDown: SpriteAnimation.fromFrameData(
+            spriteSheet,
+            SpriteAnimationData.sequenced(
+              amount: 2,
+              stepTime: 0.2,
+              textureSize: Vector2(16, 16),
+              texturePosition: Vector2(0, 0),
+            ),
+          ),
+
+          // Walk Left (frames 2-3)
+          PlayerAnimationState.walkLeft: SpriteAnimation.fromFrameData(
+            spriteSheet,
+            SpriteAnimationData.sequenced(
+              amount: 2,
+              stepTime: 0.2,
+              textureSize: Vector2(16, 16),
+              texturePosition: Vector2(32, 0), // Frame 2 (2 * 16 = 32)
+            ),
+          ),
+
+          // Walk Right (frames 4-5)
+          PlayerAnimationState.walkRight: SpriteAnimation.fromFrameData(
+            spriteSheet,
+            SpriteAnimationData.sequenced(
+              amount: 2,
+              stepTime: 0.2,
+              textureSize: Vector2(16, 16),
+              texturePosition: Vector2(64, 0), // Frame 4 (4 * 16 = 64)
+            ),
+          ),
+
+          // Walk Up (frames 6-7)
+          PlayerAnimationState.walkUp: SpriteAnimation.fromFrameData(
+            spriteSheet,
+            SpriteAnimationData.sequenced(
+              amount: 2,
+              stepTime: 0.2,
+              textureSize: Vector2(16, 16),
+              texturePosition: Vector2(96, 0), // Frame 6 (6 * 16 = 96)
+            ),
+          ),
+
+          // Throw Bomb (frames 8-9)
+          PlayerAnimationState.throwBomb: SpriteAnimation.fromFrameData(
+            spriteSheet,
+            SpriteAnimationData.sequenced(
+              amount: 2,
+              stepTime: 0.2,
+              textureSize: Vector2(16, 16),
+              texturePosition: Vector2(128, 0), // Frame 8 (8 * 16 = 128)
+              loop: false, // Don't loop the throw animation
+            ),
+          ),
+        };
+
+        animationGroupComponent =
+            SpriteAnimationGroupComponent<PlayerAnimationState>(
+              animations: animations,
+              current: PlayerAnimationState.idle,
+              size: size,
+            );
+        add(animationGroupComponent!);
+      } else {
+        // Try to load static sprite for other characters
+        final sprite = await Sprite.load(
+          character.spritePath.replaceFirst('assets/images/', ''),
+        );
+        spriteComponent = SpriteComponent(sprite: sprite, size: size);
+        add(spriteComponent!);
+      }
+    } catch (e) {
+      // Sprite not found, use colored rectangle as fallback
+      rectangleComponent = RectangleComponent(
+        size: size,
+        paint: Paint()..color = color,
+      );
+      add(rectangleComponent!);
+    }
   }
 
   @override
   void update(double dt) {
     super.update(dt);
-    
+
     if (getIsGameOver()) return;
-    
+
+    // Handle bomb throw animation timer
+    if (isThrowingBomb) {
+      bombThrowTimer -= dt;
+      if (bombThrowTimer <= 0) {
+        isThrowingBomb = false;
+      }
+    }
+
     // Get input from joystick or keyboard
     Vector2 inputDirection = Vector2.zero();
-    
+
     // Prioritize joystick input if available
     final joystickDir = getJoystickDirection();
     if (joystickDir.length > 0.1) {
@@ -57,29 +192,68 @@ class Player extends RectangleComponent {
     } else {
       inputDirection = velocity.normalized();
     }
-    
+
     // Apply movement with separate X and Y collision detection
     if (inputDirection.length > 0) {
       final newVelocity = inputDirection * moveSpeed;
       final deltaMovement = newVelocity * dt;
-      
+
       // Try movement on X axis first
       final newPositionX = Vector2(position.x + deltaMovement.x, position.y);
       if (_canMoveToPixelPosition(newPositionX)) {
         position.x = newPositionX.x;
       }
-      
+
       // Try movement on Y axis second
       final newPositionY = Vector2(position.x, position.y + deltaMovement.y);
       if (_canMoveToPixelPosition(newPositionY)) {
         position.y = newPositionY.y;
       }
-      
+
       // Update grid position based on current pixel position
       gridPosition = Vector2(
         ((position.x + size.x / 2) / tileSize).floor().toDouble(),
         ((position.y + size.y / 2) / tileSize).floor().toDouble(),
       );
+
+      // Update animation based on movement direction (only for character 1)
+      if (animationGroupComponent != null && !isThrowingBomb) {
+        _updateAnimationState(inputDirection);
+      }
+    } else {
+      // Player is not moving
+      if (animationGroupComponent != null && !isThrowingBomb) {
+        animationGroupComponent!.current = PlayerAnimationState.idle;
+      }
+    }
+  }
+
+  void _updateAnimationState(Vector2 direction) {
+    // Determine animation based on primary movement direction
+    if (direction.y.abs() > direction.x.abs()) {
+      // Vertical movement is stronger
+      if (direction.y > 0) {
+        currentAnimationState = PlayerAnimationState.walkDown;
+      } else {
+        currentAnimationState = PlayerAnimationState.walkUp;
+      }
+    } else {
+      // Horizontal movement is stronger
+      if (direction.x > 0) {
+        currentAnimationState = PlayerAnimationState.walkRight;
+      } else {
+        currentAnimationState = PlayerAnimationState.walkLeft;
+      }
+    }
+
+    animationGroupComponent?.current = currentAnimationState;
+  }
+
+  void playBombThrowAnimation() {
+    if (animationGroupComponent != null) {
+      isThrowingBomb = true;
+      bombThrowTimer = bombThrowDuration;
+      animationGroupComponent!.current = PlayerAnimationState.throwBomb;
     }
   }
 
@@ -89,7 +263,7 @@ class Player extends RectangleComponent {
 
   bool _canMoveToPixelPosition(Vector2 newPosition) {
     final gameMap = getGameMap();
-    
+
     // Check all four corners of the player rectangle
     final corners = [
       newPosition, // Top-left
@@ -97,21 +271,20 @@ class Player extends RectangleComponent {
       Vector2(newPosition.x, newPosition.y + size.y), // Bottom-left
       Vector2(newPosition.x + size.x, newPosition.y + size.y), // Bottom-right
     ];
-    
+
     for (final corner in corners) {
       final gridX = (corner.x / tileSize).floor();
       final gridY = (corner.y / tileSize).floor();
-      
-      if (gridX < 0 || gridX >= gridWidth || 
-          gridY < 0 || gridY >= gridHeight) {
+
+      if (gridX < 0 || gridX >= gridWidth || gridY < 0 || gridY >= gridHeight) {
         return false;
       }
-      
+
       if (gameMap[gridY][gridX] != TileType.empty) {
         return false;
       }
     }
-    
+
     return true;
   }
 }
