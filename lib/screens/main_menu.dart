@@ -2,12 +2,14 @@ import 'package:flutter/material.dart';
 
 class MainMenu extends StatelessWidget {
   final VoidCallback onStart;
+  final VoidCallback onMultiplayer;
   final VoidCallback onSettings;
   final VoidCallback onExit;
 
   const MainMenu({
     super.key,
     required this.onStart,
+    required this.onMultiplayer,
     required this.onSettings,
     required this.onExit,
   });
@@ -39,6 +41,11 @@ class MainMenu extends StatelessWidget {
               _MenuButton(
                 text: 'START GAME',
                 onPressed: onStart,
+              ),
+              const SizedBox(height: 20),
+              _MenuButton(
+                text: 'MULTIPLAYER',
+                onPressed: onMultiplayer,
               ),
               const SizedBox(height: 20),
               _MenuButton(
