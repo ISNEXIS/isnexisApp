@@ -40,7 +40,7 @@ class MapTile extends PositionComponent {
       rectangleComponent = null;
     }
 
-    // Try to load sprite, fall back to colored rectangle
+    // Try to load sprite, fall back to colored rectangle...
     try {
       final spritePath = _getSpritePath();
       if (spritePath != null) {
