@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -8,8 +9,10 @@ import 'game/components/player_character.dart';
 import 'screens/game_over_screen.dart';
 import 'screens/game_screen.dart';
 import 'screens/main_menu.dart';
+import 'screens/multiplayer_setup_screen.dart';
 import 'screens/player_selection_screen.dart';
 import 'screens/settings_screen.dart';
+import 'services/game_hub_client.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -40,6 +43,10 @@ class _IsnexisState extends State<Isnexis> {
   bool showGame = false;
   bool showGameOver = false;
   bool showPlayerSelection = false;
+  bool showMultiplayerSetup = false;
+  bool _playerSelectionForMultiplayer = false;
+  MultiplayerSetupResult? _pendingMultiplayerConfig;
+  GameHubClient? _activeHubClient;
   late BombGame gameInstance;
 
   @override
@@ -72,22 +79,52 @@ class _IsnexisState extends State<Isnexis> {
                   ),
               ],
             );
+          } else if (showMultiplayerSetup) {
+            return MultiplayerSetupScreen(
+              onContinue: _handleMultiplayerSetup,
+              onCancel: () {
+                setState(() {
+                  showMultiplayerSetup = false;
+                  _playerSelectionForMultiplayer = false;
+                  _pendingMultiplayerConfig = null;
+                });
+              },
+            );
           } else if (showPlayerSelection) {
             return PlayerSelectionScreen(
               onBack: () {
                 setState(() {
                   showPlayerSelection = false;
+                  if (_playerSelectionForMultiplayer) {
+                    showMultiplayerSetup = true;
+                  }
                 });
               },
               onStartGame: (selectedCharacters) {
                 _startNewGame(selectedCharacters);
               },
+              startButtonLabel: _playerSelectionForMultiplayer
+                  ? 'JOIN MATCH'
+                  : 'START GAME',
+              multiplayerCode: _playerSelectionForMultiplayer
+                  ? _pendingMultiplayerConfig?.joinCode
+                  : null,
             );
           } else {
             return MainMenu(
               onStart: () {
                 setState(() {
                   showPlayerSelection = true;
+                  showMultiplayerSetup = false;
+                  _playerSelectionForMultiplayer = false;
+                  _pendingMultiplayerConfig = null;
+                });
+              },
+              onMultiplayer: () {
+                setState(() {
+                  showPlayerSelection = false;
+                  showMultiplayerSetup = true;
+                  _playerSelectionForMultiplayer = true;
                 });
               },
               onSettings: () => _showSettings(context),
@@ -100,6 +137,22 @@ class _IsnexisState extends State<Isnexis> {
   }
 
   void _startNewGame(List<PlayerCharacter> selectedCharacters) {
+    GameHubClient? hubClient;
+    int? roomId;
+    int? playerId;
+    final pendingConfig = _pendingMultiplayerConfig;
+
+    if (_playerSelectionForMultiplayer && pendingConfig != null) {
+      _activeHubClient?.dispose();
+      hubClient = GameHubClient(baseUrl: pendingConfig.baseUrl);
+      roomId = pendingConfig.roomId;
+      playerId = pendingConfig.playerId;
+      _activeHubClient = hubClient;
+    } else if (_activeHubClient != null) {
+      _activeHubClient!.dispose();
+      _activeHubClient = null;
+    }
+
     gameInstance = BombGame(
       playerCharacters: selectedCharacters,
       onGameStateChanged: (isGameOver) {
@@ -109,12 +162,32 @@ class _IsnexisState extends State<Isnexis> {
           });
         }
       },
+      networkClient: hubClient,
+      networkRoomId: roomId,
+      networkPlayerId: playerId,
+      localPlayerId: pendingConfig?.playerId,
+      localPlayerName: pendingConfig?.displayName,
     );
     setState(() {
       showGame = true;
       showGameOver = false;
       showPlayerSelection = false;
+      showMultiplayerSetup = false;
     });
+
+    if (pendingConfig != null && pendingConfig.createdRoom) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        final code = pendingConfig.joinCode;
+        if (code.isNotEmpty) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Share this room code with friends: $code')),
+          );
+        }
+      });
+    }
+
+    _pendingMultiplayerConfig = null;
+    _playerSelectionForMultiplayer = false;
   }
 
   void _restartGame() {
@@ -128,7 +201,16 @@ class _IsnexisState extends State<Isnexis> {
     setState(() {
       showGame = false;
       showGameOver = false;
+      showPlayerSelection = false;
+      showMultiplayerSetup = false;
+      _playerSelectionForMultiplayer = false;
     });
+
+    final client = _activeHubClient;
+    if (client != null) {
+      _activeHubClient = null;
+      Future.microtask(client.dispose);
+    }
   }
 
   void _showSettings(BuildContext context) {
@@ -153,6 +235,8 @@ class _IsnexisState extends State<Isnexis> {
             TextButton(
               onPressed: () {
                 Navigator.of(context).pop();
+                _activeHubClient?.dispose();
+                _activeHubClient = null;
                 if (Platform.isAndroid || Platform.isIOS) {
                   SystemNavigator.pop();
                 } else {
@@ -165,5 +249,20 @@ class _IsnexisState extends State<Isnexis> {
         );
       },
     );
+  }
+
+  void _handleMultiplayerSetup(MultiplayerSetupResult result) {
+    setState(() {
+      _pendingMultiplayerConfig = result;
+      showMultiplayerSetup = false;
+      showPlayerSelection = true;
+      _playerSelectionForMultiplayer = true;
+    });
+  }
+
+  @override
+  void dispose() {
+    _activeHubClient?.dispose();
+    super.dispose();
   }
 }

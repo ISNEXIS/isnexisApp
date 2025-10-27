@@ -4,11 +4,15 @@ import '../game/components/player_character.dart';
 class PlayerSelectionScreen extends StatefulWidget {
   final VoidCallback onBack;
   final Function(List<PlayerCharacter>) onStartGame;
+  final String startButtonLabel;
+  final String? multiplayerCode;
 
   const PlayerSelectionScreen({
     super.key,
     required this.onBack,
     required this.onStartGame,
+    this.startButtonLabel = 'START GAME',
+    this.multiplayerCode,
   });
 
   @override
@@ -57,6 +61,21 @@ class _PlayerSelectionScreenState extends State<PlayerSelectionScreen> {
                   ],
                 ),
               ),
+
+              if (widget.multiplayerCode != null) ...[
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 12.0),
+                  child: Text(
+                    'Room code: ${widget.multiplayerCode}',
+                    style: const TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                ),
+              ],
 
               // Number of players selector
               Padding(
@@ -151,7 +170,7 @@ class _PlayerSelectionScreenState extends State<PlayerSelectionScreen> {
                     backgroundColor: Colors.greenAccent,
                     disabledBackgroundColor: Colors.grey,
                   ),
-                  child: const Text('START GAME'),
+                  child: Text(widget.startButtonLabel),
                 ),
               ),
             ],

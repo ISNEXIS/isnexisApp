@@ -1,8 +1,11 @@
+import 'dart:async';
+
 import 'package:flame/components.dart';
 import 'package:flame/events.dart';
 import 'package:flame/game.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:isnexis_app/services/game_hub_client.dart';
 
 // Component imports
 import 'components/bomb.dart';
@@ -10,6 +13,7 @@ import 'components/explosion_effect.dart';
 import 'components/map_tile.dart';
 import 'components/player.dart';
 import 'components/player_character.dart';
+import 'components/remote_player.dart';
 import 'components/tile_type.dart';
 
 class BombGame extends FlameGame
@@ -37,7 +41,34 @@ class BombGame extends FlameGame
 
   int alivePlayers = 0;
 
-  BombGame({required this.onGameStateChanged, required this.playerCharacters});
+  final GameHubClient? networkClient;
+  final int? networkRoomId;
+  final int? networkPlayerId;
+  final int? localPlayerId;
+  final String? localPlayerName;
+  final Map<int, RemotePlayer> _remotePlayers = {};
+  final Map<int, Color> _playerColors = {};
+  final Map<int, String> _playerNames = {};
+
+  bool _networkJoined = false;
+  static const double _movementBroadcastInterval = 0.1;
+  double _movementBroadcastTimer = 0.0;
+  final List<StreamSubscription<dynamic>> _networkSubscriptions = [];
+
+  BombGame({
+    required this.onGameStateChanged,
+    required this.playerCharacters,
+    this.networkClient,
+    this.networkRoomId,
+    this.networkPlayerId,
+    this.localPlayerId,
+    this.localPlayerName,
+  });
+
+  bool get _networkEnabled =>
+      networkClient != null && networkRoomId != null && networkPlayerId != null;
+
+  Iterable<int> get remotePlayerIds => _remotePlayers.keys;
 
   @override
   Color backgroundColor() => const Color(0xFF2E7D32);
@@ -45,6 +76,10 @@ class BombGame extends FlameGame
   @override
   Future<void> onLoad() async {
     await super.onLoad();
+
+    if (_networkEnabled) {
+      await _initializeNetworking();
+    }
 
     // Wait for the game size to be properly set
     if (size.x == 0 || size.y == 0) {
@@ -85,6 +120,13 @@ class BombGame extends FlameGame
     _generateMap();
     _renderMap();
     _spawnPlayer();
+
+    for (final remote in _remotePlayers.values) {
+      remote.updateTileSize(tileSize);
+      if (!remote.isMounted) {
+        add(remote);
+      }
+    }
   }
 
   @override
@@ -198,6 +240,272 @@ class BombGame extends FlameGame
     }
   }
 
+  Future<void> _initializeNetworking() async {
+    if (!_networkEnabled) {
+      return;
+    }
+
+    _ensureNetworkListeners();
+
+    if (_networkJoined) {
+      return;
+    }
+
+    try {
+      await networkClient!.ensureConnected();
+      await networkClient!.joinRoom(networkRoomId!, networkPlayerId!);
+      _networkJoined = true;
+    } catch (error) {
+      debugPrint('Failed to join game hub room: $error');
+    }
+  }
+
+  void _ensureNetworkListeners() {
+    if (!_networkEnabled || _networkSubscriptions.isNotEmpty) {
+      return;
+    }
+
+    final client = networkClient!;
+
+    _networkSubscriptions.add(
+      client.roomRosterStream.listen(_applyRemoteRoster),
+    );
+
+    _networkSubscriptions.add(
+      client.playerJoinedStream.listen(_handleRemotePlayerJoined),
+    );
+
+    _networkSubscriptions.add(
+      client.playerLeftStream.listen(_handleRemotePlayerLeft),
+    );
+
+    _networkSubscriptions.add(
+      client.playerDisconnectedStream.listen(_handleRemotePlayerLeft),
+    );
+
+    _networkSubscriptions.add(
+      client.playerMovementStream.listen(_handleRemoteMovement),
+    );
+
+    _networkSubscriptions.add(
+      client.gameEndedStream.listen(_handleRemoteGameEnded),
+    );
+  }
+
+  Future<void> _teardownNetworking() async {
+    if (_networkSubscriptions.isNotEmpty) {
+      for (final subscription in _networkSubscriptions) {
+        await subscription.cancel();
+      }
+      _networkSubscriptions.clear();
+    }
+
+    if (_remotePlayers.isNotEmpty) {
+      for (final remote in _remotePlayers.values) {
+        remote.removeFromParent();
+      }
+      _remotePlayers.clear();
+    }
+    _playerColors.clear();
+
+    if (_networkJoined && networkRoomId != null) {
+      try {
+        await networkClient!.leaveRoom(networkRoomId!);
+      } catch (error) {
+        debugPrint('Failed to leave game hub room cleanly: $error');
+      }
+    }
+
+    _networkJoined = false;
+  }
+
+  void _handleRemoteGameEnded(GameEndedEvent event) {
+    if (isGameOver) {
+      return;
+    }
+
+    isGameOver = true;
+    paused = true;
+    onGameStateChanged(true);
+  }
+
+  void _dispatchNetworkCall(Future<void> future, String actionDescription) {
+    unawaited(
+      future.catchError((error, stackTrace) {
+        debugPrint('Game hub $actionDescription failed: $error');
+      }),
+    );
+  }
+
+  void _applyRemoteRoster(List<PlayerSummary> roster) {
+    final desiredIds = <int>{};
+    for (final summary in roster) {
+      if (summary.playerId == networkPlayerId) {
+        continue;
+      }
+      _playerNames[summary.playerId] = summary.displayName;
+      desiredIds.add(summary.playerId);
+      _ensureRemotePlayer(summary);
+    }
+
+    final toRemove = _remotePlayers.keys
+        .where((id) => !desiredIds.contains(id))
+        .toList(growable: false);
+    for (final id in toRemove) {
+      _removeRemotePlayer(id);
+    }
+
+    if (roster.isNotEmpty) {
+      notifyListeners();
+    }
+  }
+
+  void _handleRemotePlayerJoined(PlayerSummary summary) {
+    if (summary.playerId == networkPlayerId) {
+      return;
+    }
+    _playerNames[summary.playerId] = summary.displayName;
+    _ensureRemotePlayer(summary);
+    notifyListeners();
+  }
+
+  void _handleRemotePlayerLeft(PlayerSummary summary) {
+    _removeRemotePlayer(summary.playerId);
+    notifyListeners();
+  }
+
+  void _handleRemoteMovement(PlayerMovementEvent event) {
+    if (event.playerId == networkPlayerId) {
+      return;
+    }
+    var remote = _remotePlayers[event.playerId];
+    if (remote == null) {
+      final name = _playerNames[event.playerId] ?? 'Player ${event.playerId}';
+      _ensureRemotePlayer(
+        PlayerSummary(playerId: event.playerId, displayName: name),
+      );
+      remote = _remotePlayers[event.playerId];
+    }
+    if (remote == null) {
+      return;
+    }
+    final effectiveTileSize = tileSize == 0 ? 1.0 : tileSize;
+    remote.applyMovement(event.payload, effectiveTileSize);
+  }
+
+  void _ensureRemotePlayer(PlayerSummary summary) {
+    if (summary.playerId == networkPlayerId) {
+      return;
+    }
+
+    _playerNames[summary.playerId] = summary.displayName;
+    final color = _colorForPlayer(summary.playerId);
+    final existing = _remotePlayers[summary.playerId];
+
+    if (existing != null) {
+      existing.displayName = summary.displayName;
+      return;
+    }
+
+    final effectiveTileSize = tileSize == 0 ? 1.0 : tileSize;
+    final remotePlayer = RemotePlayer(
+      playerId: summary.playerId,
+      displayName: summary.displayName,
+      tileSize: effectiveTileSize,
+      color: color,
+    );
+    if (tileSize > 0) {
+      remotePlayer.updateTileSize(tileSize);
+    }
+    remotePlayer.position = Vector2.all(tileSize);
+    add(remotePlayer);
+    _remotePlayers[summary.playerId] = remotePlayer;
+  }
+
+  void _removeRemotePlayer(int playerId) {
+    final remote = _remotePlayers.remove(playerId);
+    remote?.removeFromParent();
+    _playerNames.remove(playerId);
+  }
+
+  Color _colorForPlayer(int playerId) {
+    return _playerColors.putIfAbsent(playerId, () {
+      final colors = Colors.primaries;
+      final material = colors[playerId % colors.length];
+      return material.shade400;
+    });
+  }
+
+  void _broadcastLocalMovement() {
+    if (!_networkJoined ||
+        networkClient == null ||
+        networkRoomId == null ||
+        networkPlayerId == null) {
+      return;
+    }
+
+    final localPlayer = players.firstOrNull;
+    if (localPlayer == null) {
+      return;
+    }
+
+    final payload = <String, dynamic>{
+      'gridX': localPlayer.gridPosition.x.toInt(),
+      'gridY': localPlayer.gridPosition.y.toInt(),
+      'pixelX': localPlayer.position.x,
+      'pixelY': localPlayer.position.y,
+      'velocityX': localPlayer.velocity.x,
+      'velocityY': localPlayer.velocity.y,
+      'timestamp': DateTime.now().toUtc().toIso8601String(),
+    };
+
+    _dispatchNetworkCall(
+      networkClient!.sendPlayerMovement(networkRoomId!, payload),
+      'sendPlayerMovement',
+    );
+  }
+
+  void _broadcastBombPlacement(Bomb bomb) {
+    if (!_networkJoined || networkClient == null || networkRoomId == null) {
+      return;
+    }
+
+    final payload = <String, dynamic>{
+      'gridX': bomb.gridPosition.x.toInt(),
+      'gridY': bomb.gridPosition.y.toInt(),
+      'timer': bomb.timer,
+    };
+
+    if (networkPlayerId != null) {
+      payload['playerId'] = networkPlayerId;
+    }
+
+    _dispatchNetworkCall(
+      networkClient!.sendBombPlaced(networkRoomId!, payload),
+      'sendBombPlaced',
+    );
+  }
+
+  void _broadcastExplosion(Vector2 centerPos, int explosionRadius) {
+    if (!_networkJoined || networkClient == null || networkRoomId == null) {
+      return;
+    }
+
+    final payload = <String, dynamic>{
+      'center': {'x': centerPos.x.toInt(), 'y': centerPos.y.toInt()},
+      'radius': explosionRadius,
+    };
+
+    if (networkPlayerId != null) {
+      payload['playerId'] = networkPlayerId;
+    }
+
+    _dispatchNetworkCall(
+      networkClient!.sendExplosion(networkRoomId!, payload),
+      'sendExplosion',
+    );
+  }
+
   // Method to update joystick direction from Flutter widget
   void updateJoystickDirection(Offset direction) {
     joystickDirection = direction;
@@ -244,6 +552,8 @@ class BombGame extends FlameGame
       bombs.add(bomb);
       add(bomb);
 
+      _broadcastBombPlacement(bomb);
+
       // Play bomb throw animation for the active player
       activePlayer.playBombThrowAnimation();
     }
@@ -253,11 +563,11 @@ class BombGame extends FlameGame
     bombs.remove(bomb);
     bomb.removeFromParent();
 
+    final explosionRadius = players.firstOrNull?.explosionRadius.toInt() ?? 1;
+
     // Create explosion with default radius (can be upgraded per player later)
-    createExplosion(
-      bomb.gridPosition,
-      players.firstOrNull?.explosionRadius.toInt() ?? 1,
-    );
+    createExplosion(bomb.gridPosition, explosionRadius);
+    _broadcastExplosion(bomb.gridPosition, explosionRadius);
   }
 
   void createExplosion(Vector2 centerPos, int explosionRadius) {
@@ -415,6 +725,14 @@ class BombGame extends FlameGame
   }
 
   @override
+  void onRemove() {
+    if (_networkEnabled) {
+      _dispatchNetworkCall(_teardownNetworking(), 'teardownNetworking');
+    }
+    super.onRemove();
+  }
+
+  @override
   KeyEventResult onKeyEvent(
     KeyEvent event,
     Set<LogicalKeyboardKey> keysPressed,
@@ -506,6 +824,14 @@ class BombGame extends FlameGame
             player.spriteComponent!.opacity = 1.0;
           }
         }
+      }
+    }
+
+    if (_networkJoined) {
+      _movementBroadcastTimer += dt;
+      if (_movementBroadcastTimer >= _movementBroadcastInterval) {
+        _movementBroadcastTimer = 0.0;
+        _broadcastLocalMovement();
       }
     }
   }
