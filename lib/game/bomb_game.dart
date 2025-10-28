@@ -8,8 +8,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:isnexis_app/services/game_hub_client.dart';
 
+import '../screens/player_selection_screen.dart';
 // Component imports
 import 'components/bomb.dart';
+import 'components/bot_player.dart';
 import 'components/explosion_effect.dart';
 import 'components/map_tile.dart';
 import 'components/player.dart';
@@ -25,14 +27,15 @@ class BombGame extends FlameGame
   late double tileSize; // Will be calculated to fill available screen space
 
   late List<List<TileType>> gameMap;
-  List<Player> players = []; // Support multiple players
-  final List<PlayerCharacter> playerCharacters;
+  List<Player> players = []; // Support multiple players (includes bots)
+  final List<PlayerSelectionData> selectedPlayers;
   Offset joystickDirection = Offset.zero; // Flutter joystick direction
   List<Bomb> bombs = [];
   List<Powerup> powerups = []; // Track active powerups
   final Random _random = Random(); // For powerup drop chance
   bool isGameOver = false;
-  late Function(bool) onGameStateChanged; // Callback to notify main app
+  Player? winner; // Track the winning player
+  late Function(bool, {Player? winner}) onGameStateChanged; // Callback to notify main app
 
   // Player stats (for tracking overall game state)
   int maxBombs = 1; // Maximum bombs that can be placed at once (upgradeable)
@@ -61,7 +64,7 @@ class BombGame extends FlameGame
 
   BombGame({
     required this.onGameStateChanged,
-    required this.playerCharacters,
+    required this.selectedPlayers,
     this.networkClient,
     this.networkRoomId,
     this.networkPlayerId,
@@ -220,29 +223,86 @@ class BombGame extends FlameGame
 
     // Clear existing players
     players.clear();
-    alivePlayers = playerCharacters.length;
+    alivePlayers = selectedPlayers.length;
 
     // Spawn each player
-    for (int i = 0; i < playerCharacters.length; i++) {
-      final player = Player(
-        gridPosition: spawnPositions[i],
-        color: playerCharacters[i].fallbackColor,
-        character: playerCharacters[i],
-        playerNumber: i + 1,
-        tileSize: tileSize,
-        gridWidth: gridWidth,
-        gridHeight: gridHeight,
-        getGameMap: () => gameMap,
-        getIsGameOver: () => isGameOver,
-        getJoystickDirection: () => i == 0
-            ? Vector2(joystickDirection.dx, joystickDirection.dy)
-            : Vector2.zero(), // Only player 1 uses joystick for now
-        isBombAtPosition: _isBombAtPosition,
-      );
+    for (int i = 0; i < selectedPlayers.length; i++) {
+      final playerData = selectedPlayers[i];
+      Player player;
+      
+      if (playerData.isBot) {
+        // Create bot player
+        final botPlayer = BotPlayer(
+          gridPosition: spawnPositions[i],
+          color: playerData.character.fallbackColor,
+          character: playerData.character,
+          playerNumber: i + 1,
+          tileSize: tileSize,
+          gridWidth: gridWidth,
+          gridHeight: gridHeight,
+          getGameMap: () => gameMap,
+          getIsGameOver: () => isGameOver,
+          getJoystickDirection: () => Vector2.zero(), // Bots don't use joystick
+          isBombAtPosition: _isBombAtPosition,
+          difficulty: playerData.botDifficulty ?? BotDifficulty.medium,
+          getOtherPlayers: () => players, // Give bot access to all players for enemy tracking
+        );
+        
+        // Override the requestBombPlacement method to connect to game logic
+        botPlayer.onBombPlaceRequest = () {
+          _handleBotBombPlacement(botPlayer);
+        };
+        
+        player = botPlayer;
+      } else {
+        // Create human player
+        player = Player(
+          gridPosition: spawnPositions[i],
+          color: playerData.character.fallbackColor,
+          character: playerData.character,
+          playerNumber: i + 1,
+          tileSize: tileSize,
+          gridWidth: gridWidth,
+          gridHeight: gridHeight,
+          getGameMap: () => gameMap,
+          getIsGameOver: () => isGameOver,
+          getJoystickDirection: () => i == 0
+              ? Vector2(joystickDirection.dx, joystickDirection.dy)
+              : Vector2.zero(), // Only player 1 uses joystick for now
+          isBombAtPosition: _isBombAtPosition,
+        );
+      }
+      
       player.playerHealth = 1; // Initialize player health
       players.add(player);
       add(player);
     }
+  }
+
+  void _handleBotBombPlacement(BotPlayer bot) {
+    if (!bot.canPlaceBomb() || isGameOver) return;
+    
+    final bombPosition = bot.gridPosition;
+    
+    // Check if there's already a bomb at this position
+    if (_isBombAtPosition(bombPosition)) {
+      return;
+    }
+    
+    // Place the bomb
+    final newBomb = Bomb(
+      gridPosition: bombPosition,
+      tileSize: tileSize,
+      onExplode: explodeBomb,
+      ownerPlayer: bot,
+      ownerCharacter: bot.character,
+      fallbackColor: bot.color,
+    );
+    
+    bombs.add(newBomb);
+    add(newBomb);
+    bot.incrementBombCount();
+    bot.playBombThrowAnimation();
   }
 
   Future<void> _initializeNetworking() async {
@@ -768,7 +828,14 @@ class BombGame extends FlameGame
   void _gameOver() {
     isGameOver = true;
     paused = true;
-    onGameStateChanged(true); // Notify that game is over
+    
+    // Find the winner (the last player alive)
+    winner = players.firstWhere(
+      (player) => player.playerHealth > 0,
+      orElse: () => players.first, // Fallback if all died simultaneously
+    );
+    
+    onGameStateChanged(true, winner: winner); // Notify that game is over with winner
   }
 
   void restartGame() {
@@ -776,7 +843,8 @@ class BombGame extends FlameGame
     paused = false;
     maxBombs = 1; // Reset to default
     score = 0;
-    alivePlayers = playerCharacters.length;
+    alivePlayers = selectedPlayers.length;
+    winner = null; // Clear winner
 
     // Reset invincibility for all players
     playerInvincibility = [false, false, false, false];

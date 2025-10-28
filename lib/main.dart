@@ -5,13 +5,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import 'game/bomb_game.dart';
-import 'game/components/player_character.dart';
+import 'game/components/player.dart';
 import 'screens/game_over_screen.dart';
 import 'screens/game_screen.dart';
 import 'screens/main_menu.dart';
 import 'screens/multiplayer_setup_screen.dart';
 import 'screens/player_selection_screen.dart';
 import 'screens/settings_screen.dart';
+import 'screens/winning_screen.dart';
 import 'services/game_hub_client.dart';
 
 void main() async {
@@ -42,12 +43,14 @@ class Isnexis extends StatefulWidget {
 class _IsnexisState extends State<Isnexis> {
   bool showGame = false;
   bool showGameOver = false;
+  bool showWinning = false;
   bool showPlayerSelection = false;
   bool showMultiplayerSetup = false;
   bool _playerSelectionForMultiplayer = false;
   MultiplayerSetupResult? _pendingMultiplayerConfig;
   GameHubClient? _activeHubClient;
   late BombGame gameInstance;
+  Player? winningPlayer;
 
   @override
   Widget build(BuildContext context) {
@@ -77,6 +80,13 @@ class _IsnexisState extends State<Isnexis> {
                     onPlayAgain: _restartGame,
                     onMainMenu: _goToMainMenu,
                   ),
+                // Winning overlay modal
+                if (showWinning)
+                  WinningScreen(
+                    onPlayAgain: _restartGame,
+                    onMainMenu: _goToMainMenu,
+                    playerNumber: winningPlayer?.playerNumber ?? 1,
+                  ),
               ],
             );
           } else if (showMultiplayerSetup) {
@@ -100,8 +110,8 @@ class _IsnexisState extends State<Isnexis> {
                   }
                 });
               },
-              onStartGame: (selectedCharacters) {
-                _startNewGame(selectedCharacters);
+              onStartGame: (selectedPlayers) {
+                _startNewGame(selectedPlayers);
               },
               startButtonLabel: _playerSelectionForMultiplayer
                   ? 'JOIN MATCH'
@@ -136,7 +146,7 @@ class _IsnexisState extends State<Isnexis> {
     );
   }
 
-  void _startNewGame(List<PlayerCharacter> selectedCharacters) {
+  void _startNewGame(List<PlayerSelectionData> selectedPlayers) {
     GameHubClient? hubClient;
     int? roomId;
     int? playerId;
@@ -154,11 +164,19 @@ class _IsnexisState extends State<Isnexis> {
     }
 
     gameInstance = BombGame(
-      playerCharacters: selectedCharacters,
-      onGameStateChanged: (isGameOver) {
+      selectedPlayers: selectedPlayers,
+      onGameStateChanged: (isGameOver, {Player? winner}) {
         if (isGameOver) {
           setState(() {
-            showGameOver = true;
+            winningPlayer = winner;
+            // Determine if it's game over or winning
+            if (winner != null && winner.playerHealth > 0) {
+              showWinning = true;
+              showGameOver = false;
+            } else {
+              showGameOver = true;
+              showWinning = false;
+            }
           });
         }
       },
@@ -171,6 +189,7 @@ class _IsnexisState extends State<Isnexis> {
     setState(() {
       showGame = true;
       showGameOver = false;
+      showWinning = false;
       showPlayerSelection = false;
       showMultiplayerSetup = false;
     });
@@ -194,6 +213,7 @@ class _IsnexisState extends State<Isnexis> {
     gameInstance.restartGame();
     setState(() {
       showGameOver = false;
+      showWinning = false;
     });
   }
 
@@ -201,6 +221,7 @@ class _IsnexisState extends State<Isnexis> {
     setState(() {
       showGame = false;
       showGameOver = false;
+      showWinning = false;
       showPlayerSelection = false;
       showMultiplayerSetup = false;
       _playerSelectionForMultiplayer = false;
