@@ -9,6 +9,21 @@ enum PlayerCharacter {
 }
 
 extension PlayerCharacterExtension on PlayerCharacter {
+  /// Get the animated sprite sheet path for this character (if available)
+  /// Returns null if the character doesn't have an animated sprite sheet
+  String? get animatedSpritePath {
+    switch (this) {
+      case PlayerCharacter.character1:
+        return 'characters/KawinPlayable.png';
+      case PlayerCharacter.character2:
+        return 'characters/EiraPlayable.png';
+      case PlayerCharacter.character3:
+        return null; // Add path when sprite sheet is ready
+      case PlayerCharacter.character4:
+        return null; // Add path when sprite sheet is ready
+    }
+  }
+
   /// Get the asset path for this character's sprite
   String get spritePath {
     switch (this) {

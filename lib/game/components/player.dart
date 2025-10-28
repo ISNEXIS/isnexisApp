@@ -76,13 +76,13 @@ class Player extends PositionComponent {
 
   @override
   Future<void> onLoad() async {
-    // Try to load animated sprite for character 1, static sprite for others
+    // Try to load animated sprite if available, otherwise fall back to static sprite
     try {
-      if (character == PlayerCharacter.character1) {
-        // Load sprite sheet for character 1
-        final spriteSheet = await Flame.images.load(
-          'characters/KawinPlayable.png',
-        );
+      final animatedPath = character.animatedSpritePath;
+
+      if (animatedPath != null) {
+        // Character has an animated sprite sheet
+        final spriteSheet = await Flame.images.load(animatedPath);
 
         // Create animations for each direction and state
         final animations = {
@@ -294,7 +294,7 @@ class Player extends PositionComponent {
     // Calculate which grid tile the player's center will be on after moving
     final newCenterX = ((newPosition.x + size.x / 2) / tileSize).floor();
     final newCenterY = ((newPosition.y + size.y / 2) / tileSize).floor();
-    
+
     // Calculate current grid tile (center)
     final currentCenterX = ((position.x + size.x / 2) / tileSize).floor();
     final currentCenterY = ((position.y + size.y / 2) / tileSize).floor();
@@ -322,8 +322,9 @@ class Player extends PositionComponent {
 
     // Check for bombs - only block if moving INTO a new tile with a bomb
     final gridPos = Vector2(newCenterX.toDouble(), newCenterY.toDouble());
-    final movingToNewTile = (newCenterX != currentCenterX || newCenterY != currentCenterY);
-    
+    final movingToNewTile =
+        (newCenterX != currentCenterX || newCenterY != currentCenterY);
+
     if (movingToNewTile && isBombAtPosition(gridPos)) {
       return false;
     }
