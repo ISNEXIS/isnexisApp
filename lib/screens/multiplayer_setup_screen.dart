@@ -70,22 +70,35 @@ class _MultiplayerSetupScreenState extends State<MultiplayerSetupScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      appBar: AppBar(
+        title: const Text(
+          '🌐 MULTIPLAYER 🌐',
+          style: TextStyle(
+            fontFamily: 'Courier',
+            fontWeight: FontWeight.bold,
+            letterSpacing: 2,
+          ),
+        ),
+        backgroundColor: const Color(0xFF0F380F),
+        foregroundColor: const Color(0xFF9BBC0F),
+        iconTheme: const IconThemeData(color: Color(0xFF9BBC0F)),
+      ),
       body: Container(
         decoration: const BoxDecoration(
           gradient: LinearGradient(
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
-            colors: [Colors.indigo, Colors.deepPurple],
+            colors: [Color(0xFF0F380F), Color(0xFF306230)],
           ),
         ),
         child: SafeArea(
           child: Center(
             child: SingleChildScrollView(
               padding: const EdgeInsets.all(24.0),
-              child: Card(
-                elevation: 6,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(16),
+              child: Container(
+                decoration: BoxDecoration(
+                  color: const Color(0xFF9BBC0F),
+                  border: Border.all(color: const Color(0xFF0F380F), width: 5),
                 ),
                 child: Padding(
                   padding: const EdgeInsets.all(24.0),
@@ -96,42 +109,31 @@ class _MultiplayerSetupScreenState extends State<MultiplayerSetupScreen> {
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
                         const Text(
-                          'Multiplayer Setup',
+                          '◆ ONLINE MODE ◆',
                           textAlign: TextAlign.center,
                           style: TextStyle(
-                            fontSize: 28,
+                            fontFamily: 'Courier',
+                            fontSize: 24,
                             fontWeight: FontWeight.bold,
+                            color: Color(0xFF0F380F),
+                            letterSpacing: 2,
                           ),
                         ),
                         const SizedBox(height: 24),
-                        _buildTextField(
+                        _buildRetroTextField(
                           controller: _serverController,
-                          label: 'Server URL',
+                          label: 'SERVER URL',
                           hintText: 'http://localhost:5231',
-                          keyboardType: TextInputType.url,
-                          validator: (value) {
-                            if (value == null || value.trim().isEmpty) {
-                              return 'Please enter the server URL';
-                            }
-                            return null;
-                          },
                         ),
                         const SizedBox(height: 16),
-                        _buildTextField(
+                        _buildRetroTextField(
                           controller: _displayNameController,
-                          label: 'Display Name',
+                          label: 'PLAYER NAME',
                           hintText: 'Player',
-                          textInputAction: TextInputAction.next,
-                          validator: (value) {
-                            if (value == null || value.trim().isEmpty) {
-                              return 'Please enter a name';
-                            }
-                            return null;
-                          },
                         ),
-                        const SizedBox(height: 12),
-                        SwitchListTile(
-                          title: const Text('Create a new room'),
+                        const SizedBox(height: 16),
+                        _buildRetroToggle(
+                          label: 'CREATE NEW ROOM',
                           value: _createRoom,
                           onChanged: (value) {
                             setState(() {
@@ -140,102 +142,124 @@ class _MultiplayerSetupScreenState extends State<MultiplayerSetupScreen> {
                           },
                         ),
                         if (_createRoom) ...[
-                          const SizedBox(height: 12),
-                          _buildTextField(
+                          const SizedBox(height: 16),
+                          _buildRetroTextField(
                             controller: _roomNameController,
-                            label: 'Room Name',
+                            label: 'ROOM NAME',
                             hintText: 'My Arena',
-                            textInputAction: TextInputAction.next,
                           ),
-                          const SizedBox(height: 12),
-                          Text(
-                            'Max players: ${_maxPlayersValue.toInt()}',
-                            style: Theme.of(context).textTheme.bodyMedium,
+                          const SizedBox(height: 16),
+                          Container(
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF306230),
+                              border: Border.all(color: const Color(0xFF0F380F), width: 3),
+                            ),
+                            child: Column(
+                              children: [
+                                Text(
+                                  'MAX PLAYERS: ${_maxPlayersValue.toInt()}',
+                                  style: const TextStyle(
+                                    fontFamily: 'Courier',
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.bold,
+                                    color: Color(0xFF9BBC0F),
+                                  ),
+                                ),
+                                SliderTheme(
+                                  data: SliderThemeData(
+                                    activeTrackColor: const Color(0xFF9BBC0F),
+                                    inactiveTrackColor: const Color(0xFF0F380F),
+                                    thumbColor: const Color(0xFF9BBC0F),
+                                    overlayColor: const Color(0xFF9BBC0F).withOpacity(0.2),
+                                    trackHeight: 8,
+                                    thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 10),
+                                  ),
+                                  child: Slider(
+                                    value: _maxPlayersValue,
+                                    onChanged: (value) {
+                                      setState(() {
+                                        _maxPlayersValue = value;
+                                      });
+                                    },
+                                    divisions: 2,
+                                    min: 2,
+                                    max: 4,
+                                  ),
+                                ),
+                              ],
+                            ),
                           ),
-                          Slider(
-                            value: _maxPlayersValue,
-                            onChanged: (value) {
-                              setState(() {
-                                _maxPlayersValue = value;
-                              });
-                            },
-                            divisions: 2,
-                            min: 2,
-                            max: 4,
-                            label: _maxPlayersValue.toInt().toString(),
-                          ),
-                          Padding(
-                            padding: const EdgeInsets.only(bottom: 12.0),
+                          const SizedBox(height: 8),
+                          const Padding(
+                            padding: EdgeInsets.symmetric(horizontal: 8.0),
                             child: Text(
-                              'A 3-character room code will be generated for you to share.',
+                              'A 3-CHAR CODE WILL BE GENERATED',
                               textAlign: TextAlign.center,
-                              style: Theme.of(context).textTheme.bodyMedium,
+                              style: TextStyle(
+                                fontFamily: 'Courier',
+                                fontSize: 11,
+                                color: Color(0xFF306230),
+                              ),
                             ),
                           ),
                         ] else ...[
                           const SizedBox(height: 16),
-                          _buildTextField(
+                          _buildRetroTextField(
                             controller: _joinCodeController,
-                            label: 'Room Code',
+                            label: 'ROOM CODE',
                             hintText: 'ABC',
-                            textInputAction: TextInputAction.done,
-                            textCapitalization: TextCapitalization.characters,
                             maxLength: 3,
-                            inputFormatters: [
-                              FilteringTextInputFormatter.allow(
-                                RegExp('[A-Za-z0-9]'),
-                              ),
-                            ],
-                            validator: (value) {
-                              final code = value?.trim().toUpperCase() ?? '';
-                              if (code.isEmpty) {
-                                return 'Enter the room code';
-                              }
-                              if (code.length != 3) {
-                                return 'Code must be 3 letters or numbers';
-                              }
-                              return null;
-                            },
+                            uppercase: true,
                           ),
                         ],
                         if (_errorMessage != null) ...[
                           const SizedBox(height: 16),
-                          Text(
-                            _errorMessage!,
-                            style: const TextStyle(
-                              color: Colors.redAccent,
-                              fontWeight: FontWeight.w600,
+                          Container(
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFFF3333),
+                              border: Border.all(color: const Color(0xFF0F380F), width: 3),
+                            ),
+                            child: Text(
+                              _errorMessage!,
+                              style: const TextStyle(
+                                fontFamily: 'Courier',
+                                color: Colors.white,
+                                fontWeight: FontWeight.bold,
+                                fontSize: 12,
+                              ),
                             ),
                           ),
                         ],
                         const SizedBox(height: 24),
                         if (_isLoading)
-                          const Padding(
-                            padding: EdgeInsets.only(bottom: 16.0),
-                            child: LinearProgressIndicator(),
+                          Container(
+                            margin: const EdgeInsets.only(bottom: 16),
+                            height: 8,
+                            decoration: BoxDecoration(
+                              border: Border.all(color: const Color(0xFF0F380F), width: 3),
+                            ),
+                            child: const LinearProgressIndicator(
+                              backgroundColor: Color(0xFF306230),
+                              valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF0F380F)),
+                            ),
                           ),
                         Row(
                           children: [
                             Expanded(
-                              child: OutlinedButton(
+                              child: _buildRetroButton(
+                                label: 'CANCEL',
                                 onPressed: _isLoading ? null : widget.onCancel,
-                                child: const Text('Cancel'),
+                                isPrimary: false,
                               ),
                             ),
                             const SizedBox(width: 16),
                             Expanded(
-                              child: ElevatedButton(
+                              child: _buildRetroButton(
+                                label: 'START',
                                 onPressed: _isLoading ? null : _submit,
-                                style: ElevatedButton.styleFrom(
-                                  padding: const EdgeInsets.symmetric(
-                                    vertical: 14,
-                                  ),
-                                  textStyle: const TextStyle(
-                                    fontSize: 18,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
-                                child: const Text('Continue'),
+                                isPrimary: true,
                               ),
                             ),
                           ],
@@ -252,33 +276,161 @@ class _MultiplayerSetupScreenState extends State<MultiplayerSetupScreen> {
     );
   }
 
-  Widget _buildTextField({
+  Widget _buildRetroTextField({
     required TextEditingController controller,
     required String label,
     required String hintText,
-    TextInputType? keyboardType,
-    TextInputAction? textInputAction,
-    TextCapitalization textCapitalization = TextCapitalization.none,
-    List<TextInputFormatter>? inputFormatters,
     int? maxLength,
-    String? Function(String?)? validator,
+    bool uppercase = false,
   }) {
-    return TextFormField(
-      controller: controller,
-      keyboardType: keyboardType,
-      textInputAction: textInputAction,
-      textCapitalization: textCapitalization,
-      inputFormatters: inputFormatters,
-      maxLength: maxLength,
-      decoration: InputDecoration(
-        labelText: label,
-        hintText: hintText,
-        border: const OutlineInputBorder(),
-        counterText: maxLength != null ? '' : null,
-      ),
-      validator: validator,
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: const TextStyle(
+            fontFamily: 'Courier',
+            fontSize: 12,
+            fontWeight: FontWeight.bold,
+            color: Color(0xFF0F380F),
+          ),
+        ),
+        const SizedBox(height: 8),
+        Container(
+          decoration: BoxDecoration(
+            color: Colors.white,
+            border: Border.all(color: const Color(0xFF0F380F), width: 3),
+          ),
+          child: TextFormField(
+            controller: controller,
+            maxLength: maxLength,
+            textCapitalization: uppercase ? TextCapitalization.characters : TextCapitalization.none,
+            inputFormatters: uppercase
+                ? [FilteringTextInputFormatter.allow(RegExp('[A-Za-z0-9]'))]
+                : null,
+            style: const TextStyle(
+              fontFamily: 'Courier',
+              fontSize: 14,
+              fontWeight: FontWeight.bold,
+              color: Color(0xFF0F380F),
+            ),
+            decoration: InputDecoration(
+              hintText: hintText,
+              hintStyle: TextStyle(
+                fontFamily: 'Courier',
+                color: const Color(0xFF0F380F).withOpacity(0.4),
+              ),
+              border: InputBorder.none,
+              contentPadding: const EdgeInsets.all(12),
+              counterText: '',
+            ),
+            validator: (value) {
+              if (value == null || value.trim().isEmpty) {
+                return 'REQUIRED!';
+              }
+              if (maxLength != null && value.length != maxLength) {
+                return 'MUST BE $maxLength CHARS';
+              }
+              return null;
+            },
+          ),
+        ),
+      ],
     );
   }
+
+  Widget _buildRetroToggle({
+    required String label,
+    required bool value,
+    required ValueChanged<bool> onChanged,
+  }) {
+    return GestureDetector(
+      onTap: () => onChanged(!value),
+      child: Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: value ? const Color(0xFF0F380F) : const Color(0xFF306230),
+          border: Border.all(color: const Color(0xFF0F380F), width: 3),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(
+              label,
+              style: TextStyle(
+                fontFamily: 'Courier',
+                fontSize: 12,
+                fontWeight: FontWeight.bold,
+                color: value ? const Color(0xFF9BBC0F) : const Color(0xFF0F380F),
+              ),
+            ),
+            Container(
+              width: 50,
+              height: 24,
+              decoration: BoxDecoration(
+                border: Border.all(color: const Color(0xFF9BBC0F), width: 2),
+              ),
+              child: Align(
+                alignment: value ? Alignment.centerRight : Alignment.centerLeft,
+                child: Container(
+                  width: 20,
+                  height: 20,
+                  margin: const EdgeInsets.all(1),
+                  color: const Color(0xFF9BBC0F),
+                  child: Center(
+                    child: Text(
+                      value ? 'Y' : 'N',
+                      style: const TextStyle(
+                        fontFamily: 'Courier',
+                        fontSize: 10,
+                        fontWeight: FontWeight.bold,
+                        color: Color(0xFF0F380F),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildRetroButton({
+    required String label,
+    required VoidCallback? onPressed,
+    required bool isPrimary,
+  }) {
+    final isEnabled = onPressed != null;
+    return GestureDetector(
+      onTap: onPressed,
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 16),
+        decoration: BoxDecoration(
+          color: !isEnabled
+              ? const Color(0xFF306230)
+              : (isPrimary ? const Color(0xFF0F380F) : const Color(0xFF9BBC0F)),
+          border: Border.all(color: const Color(0xFF0F380F), width: 4),
+        ),
+        child: Center(
+          child: Text(
+            label,
+            style: TextStyle(
+              fontFamily: 'Courier',
+              fontSize: 14,
+              fontWeight: FontWeight.bold,
+              color: !isEnabled
+                  ? const Color(0xFF0F380F).withOpacity(0.5)
+                  : (isPrimary ? const Color(0xFF9BBC0F) : const Color(0xFF0F380F)),
+              letterSpacing: 2,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
 
   Future<void> _submit() async {
     setState(() {
