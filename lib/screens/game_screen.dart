@@ -218,90 +218,114 @@ class _GameScreenState extends State<GameScreen> {
           // Pause Overlay
           if (widget.game.paused)
             Container(
-              color: Colors.black.withOpacity(0.7),
+              color: const Color(0xFF0F380F).withOpacity(0.9),
               child: Center(
                 child: Container(
                   padding: const EdgeInsets.all(32),
                   decoration: BoxDecoration(
-                    color: const Color(0xFF1A1A1A).withOpacity(0.95),
-                    borderRadius: BorderRadius.circular(20),
+                    color: const Color(0xFF9BBC0F),
                     border: Border.all(
-                      color: Colors.white.withOpacity(0.3),
-                      width: 3,
+                      color: const Color(0xFF0F380F),
+                      width: 6,
                     ),
                   ),
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
+                      // Pixel art pause icon
+                      Container(
+                        width: 80,
+                        height: 80,
+                        decoration: BoxDecoration(
+                          border: Border.all(color: const Color(0xFF0F380F), width: 3),
+                        ),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Container(
+                              width: 18,
+                              height: 50,
+                              color: const Color(0xFF0F380F),
+                            ),
+                            const SizedBox(width: 16),
+                            Container(
+                              width: 18,
+                              height: 50,
+                              color: const Color(0xFF0F380F),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 24),
                       const Text(
-                        'PAUSED',
+                        '║║ PAUSED ║║',
                         style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 48,
+                          fontFamily: 'Courier',
+                          color: Color(0xFF0F380F),
+                          fontSize: 32,
                           fontWeight: FontWeight.bold,
+                          letterSpacing: 3,
                         ),
                       ),
                       const SizedBox(height: 40),
                       // Resume Button
                       SizedBox(
-                        width: 200,
+                        width: 240,
                         height: 60,
-                        child: ElevatedButton(
-                          onPressed: () {
+                        child: GestureDetector(
+                          onTap: () {
                             setState(() {
                               widget.game.paused = false;
                             });
                           },
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.green,
-                            foregroundColor: Colors.white,
-                            textStyle: const TextStyle(
-                              fontSize: 24,
-                              fontWeight: FontWeight.bold,
+                          child: Container(
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF4CAF50),
+                              border: Border.all(color: const Color(0xFF0F380F), width: 4),
                             ),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
+                            child: const Center(
+                              child: Text(
+                                '▶ RESUME ▶',
+                                style: TextStyle(
+                                  fontFamily: 'Courier',
+                                  fontSize: 20,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.white,
+                                  letterSpacing: 2,
+                                ),
+                              ),
                             ),
-                          ),
-                          child: const Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Icon(Icons.play_arrow, size: 32),
-                              SizedBox(width: 8),
-                              Text('Resume'),
-                            ],
                           ),
                         ),
                       ),
                       const SizedBox(height: 20),
                       // Back to Menu Button
                       SizedBox(
-                        width: 200,
+                        width: 240,
                         height: 60,
-                        child: ElevatedButton(
-                          onPressed: () {
+                        child: GestureDetector(
+                          onTap: () {
                             // Unpause and go back to menu
                             widget.game.paused = false;
                             widget.onBackToMenu();
                           },
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.grey[800],
-                            foregroundColor: Colors.white,
-                            textStyle: const TextStyle(
-                              fontSize: 24,
-                              fontWeight: FontWeight.bold,
+                          child: Container(
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF306230),
+                              border: Border.all(color: const Color(0xFF0F380F), width: 4),
                             ),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
+                            child: const Center(
+                              child: Text(
+                                '⌂ MAIN MENU ⌂',
+                                style: TextStyle(
+                                  fontFamily: 'Courier',
+                                  fontSize: 20,
+                                  fontWeight: FontWeight.bold,
+                                  color: Color(0xFF9BBC0F),
+                                  letterSpacing: 2,
+                                ),
+                              ),
                             ),
-                          ),
-                          child: const Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Icon(Icons.home, size: 32),
-                              SizedBox(width: 8),
-                              Text('Menu'),
-                            ],
                           ),
                         ),
                       ),
