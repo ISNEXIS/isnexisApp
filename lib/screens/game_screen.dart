@@ -172,7 +172,7 @@ class _GameScreenState extends State<GameScreen> {
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    '💣 : ${widget.game.bombs.length}',
+                    '💣 : ${firstPlayer?.maxBombs ?? 1}',
                     style: const TextStyle(
                       color: Colors.white,
                       fontSize: 18,

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math';
 
 import 'package:flame/components.dart';
 import 'package:flame/events.dart';
@@ -13,6 +14,7 @@ import 'components/explosion_effect.dart';
 import 'components/map_tile.dart';
 import 'components/player.dart';
 import 'components/player_character.dart';
+import 'components/powerup.dart';
 import 'components/remote_player.dart';
 import 'components/tile_type.dart';
 
@@ -27,6 +29,8 @@ class BombGame extends FlameGame
   final List<PlayerCharacter> playerCharacters;
   Offset joystickDirection = Offset.zero; // Flutter joystick direction
   List<Bomb> bombs = [];
+  List<Powerup> powerups = []; // Track active powerups
+  final Random _random = Random(); // For powerup drop chance
   bool isGameOver = false;
   late Function(bool) onGameStateChanged; // Callback to notify main app
 
@@ -233,6 +237,7 @@ class BombGame extends FlameGame
         getJoystickDirection: () => i == 0
             ? Vector2(joystickDirection.dx, joystickDirection.dy)
             : Vector2.zero(), // Only player 1 uses joystick for now
+        isBombAtPosition: _isBombAtPosition,
       );
       player.playerHealth = 1; // Initialize player health
       players.add(player);
@@ -521,6 +526,14 @@ class BombGame extends FlameGame
     return gameMap[gridPos.y.toInt()][gridPos.x.toInt()] == TileType.empty;
   }
 
+  bool _isBombAtPosition(Vector2 gridPos) {
+    return bombs.any(
+      (bomb) =>
+          bomb.gridPosition.x.toInt() == gridPos.x.toInt() &&
+          bomb.gridPosition.y.toInt() == gridPos.y.toInt(),
+    );
+  }
+
   void placeBomb() {
     if (isGameOver || players.isEmpty) return;
 
@@ -529,8 +542,8 @@ class BombGame extends FlameGame
     final activePlayer = players.firstOrNull;
     if (activePlayer == null) return;
 
-    // Check if player has reached maximum bomb limit
-    if (bombs.length >= maxBombs) return;
+    // Check if player can place more bombs
+    if (!activePlayer.canPlaceBomb()) return;
 
     final playerGridPos = activePlayer.gridPosition;
 
@@ -547,10 +560,14 @@ class BombGame extends FlameGame
         onExplode: explodeBomb,
         tileSize: tileSize,
         ownerCharacter: activePlayer.character,
+        ownerPlayer: activePlayer,
         fallbackColor: activePlayer.color,
       );
       bombs.add(bomb);
       add(bomb);
+
+      // Increment player's bomb count
+      activePlayer.incrementBombCount();
 
       _broadcastBombPlacement(bomb);
 
@@ -563,9 +580,15 @@ class BombGame extends FlameGame
     bombs.remove(bomb);
     bomb.removeFromParent();
 
-    final explosionRadius = players.firstOrNull?.explosionRadius.toInt() ?? 1;
+    // Decrement the owner player's bomb count
+    if (bomb.ownerPlayer != null) {
+      bomb.ownerPlayer!.decrementBombCount();
+    }
 
-    // Create explosion with default radius (can be upgraded per player later)
+    // Use the owner player's explosion radius
+    final explosionRadius = bomb.ownerPlayer?.explosionRadius ?? 1;
+
+    // Create explosion with player's explosion radius
     createExplosion(bomb.gridPosition, explosionRadius);
     _broadcastExplosion(bomb.gridPosition, explosionRadius);
   }
@@ -632,9 +655,29 @@ class BombGame extends FlameGame
       gameMap[y][x] = TileType.empty;
       score += 10; // Add points for destroying walls
 
+      // 20% chance to spawn a random powerup
+      if (_random.nextDouble() < 0.20) {
+        _spawnRandomPowerup(pos);
+      }
+
       // Update the visual tile
       _updateTileVisual(pos);
     }
+  }
+
+  void _spawnRandomPowerup(Vector2 pos) {
+    // Randomly select one of the 4 powerup types with equal probability
+    final powerupTypes = PowerupType.values;
+    final randomType = powerupTypes[_random.nextInt(powerupTypes.length)];
+    
+    final powerup = Powerup(
+      type: randomType,
+      gridPosition: pos,
+      tileSize: tileSize,
+    );
+    
+    add(powerup);
+    powerups.add(powerup);
   }
 
   void _updateTileVisual(Vector2 gridPos) {
@@ -685,6 +728,40 @@ class BombGame extends FlameGame
           }
         }
       }
+    }
+  }
+
+  void _checkPowerupCollection() {
+    if (isGameOver) return;
+
+    // Check each player against each powerup
+    for (final player in players) {
+      if (player.playerHealth <= 0) continue;
+
+      final playerGridX = player.gridPosition.x.toInt();
+      final playerGridY = player.gridPosition.y.toInt();
+
+      // Check all powerups
+      final powerupsToRemove = <Powerup>[];
+      for (final powerup in powerups) {
+        if (powerup.collected) continue;
+
+        final powerupGridX = powerup.gridPosition.x.toInt();
+        final powerupGridY = powerup.gridPosition.y.toInt();
+
+        // Check if player is on the same grid position as powerup
+        if (playerGridX == powerupGridX && playerGridY == powerupGridY) {
+          // Apply powerup to player
+          powerup.applyToPlayer(player);
+          
+          // Mark for removal
+          powerupsToRemove.add(powerup);
+          powerup.removeFromParent();
+        }
+      }
+
+      // Remove collected powerups from tracking list
+      powerups.removeWhere((p) => powerupsToRemove.contains(p));
     }
   }
 
@@ -826,6 +903,9 @@ class BombGame extends FlameGame
         }
       }
     }
+
+    // Check for powerup collection
+    _checkPowerupCollection();
 
     if (_networkJoined) {
       _movementBroadcastTimer += dt;

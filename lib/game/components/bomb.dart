@@ -1,6 +1,7 @@
 import 'package:flame/components.dart';
 import 'package:flutter/material.dart';
 
+import 'player.dart';
 import 'player_character.dart';
 
 class Bomb extends PositionComponent {
@@ -8,6 +9,7 @@ class Bomb extends PositionComponent {
   final Function(Bomb) onExplode;
   final double tileSize;
   final PlayerCharacter? ownerCharacter; // Which character placed this bomb
+  final Player? ownerPlayer; // Reference to player who placed this bomb
   final Color fallbackColor; // Fallback color if no sprite
   double timer = 3.0; // 3 seconds until explosion
 
@@ -20,6 +22,7 @@ class Bomb extends PositionComponent {
     required this.onExplode,
     required this.tileSize,
     this.ownerCharacter,
+    this.ownerPlayer,
     this.fallbackColor = Colors.black,
   }) : super(
          position: Vector2(
