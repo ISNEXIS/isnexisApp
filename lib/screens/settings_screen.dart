@@ -17,16 +17,24 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Settings'),
-        backgroundColor: Colors.deepPurple,
-        foregroundColor: Colors.white,
+        title: const Text(
+          '⚙ SETTINGS ⚙',
+          style: TextStyle(
+            fontFamily: 'Courier',
+            fontWeight: FontWeight.bold,
+            letterSpacing: 2,
+          ),
+        ),
+        backgroundColor: const Color(0xFF0F380F),
+        foregroundColor: const Color(0xFF9BBC0F),
+        iconTheme: const IconThemeData(color: Color(0xFF9BBC0F)),
       ),
       body: Container(
         decoration: const BoxDecoration(
           gradient: LinearGradient(
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
-            colors: [Colors.blue, Colors.purple],
+            colors: [Color(0xFF0F380F), Color(0xFF306230)],
           ),
         ),
         child: ListView(

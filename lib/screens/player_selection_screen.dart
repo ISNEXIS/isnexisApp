@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+
 import '../game/components/player_character.dart';
 
 class PlayerSelectionScreen extends StatefulWidget {
@@ -31,7 +32,10 @@ class _PlayerSelectionScreenState extends State<PlayerSelectionScreen> {
           gradient: LinearGradient(
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
-            colors: [Colors.blue, Colors.purple],
+            colors: [
+              Color(0xFF0F380F), // Dark green (Game Boy style)
+              Color(0xFF306230), // Medium green
+            ],
           ),
         ),
         child: SafeArea(
@@ -42,22 +46,47 @@ class _PlayerSelectionScreenState extends State<PlayerSelectionScreen> {
                 padding: const EdgeInsets.all(16.0),
                 child: Row(
                   children: [
-                    IconButton(
-                      icon: const Icon(Icons.arrow_back, color: Colors.white),
-                      onPressed: widget.onBack,
+                    // Retro back button
+                    Container(
+                      decoration: BoxDecoration(
+                        color: Colors.black,
+                        border: Border.all(color: const Color(0xFF9BBC0F), width: 3),
+                      ),
+                      child: IconButton(
+                        icon: const Icon(Icons.arrow_back, color: Color(0xFF9BBC0F)),
+                        onPressed: widget.onBack,
+                      ),
                     ),
-                    const Expanded(
+                    Expanded(
                       child: Text(
-                        'SELECT PLAYERS',
+                        '⚡ SELECT PLAYERS ⚡',
                         textAlign: TextAlign.center,
                         style: TextStyle(
-                          fontSize: 32,
+                          fontSize: 28,
+                          fontFamily: 'Courier',
                           fontWeight: FontWeight.bold,
-                          color: Colors.white,
+                          letterSpacing: 2,
+                          foreground: Paint()
+                            ..style = PaintingStyle.stroke
+                            ..strokeWidth = 2
+                            ..color = Colors.black,
                         ),
                       ),
                     ),
-                    const SizedBox(width: 48), // Balance the back button
+                    Expanded(
+                      child: Text(
+                        '⚡ SELECT PLAYERS ⚡',
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(
+                          fontSize: 28,
+                          fontFamily: 'Courier',
+                          fontWeight: FontWeight.bold,
+                          letterSpacing: 2,
+                          color: Color(0xFFFFFF00),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 60), // Balance the back button
                   ],
                 ),
               ),
@@ -65,14 +94,23 @@ class _PlayerSelectionScreenState extends State<PlayerSelectionScreen> {
               if (widget.multiplayerCode != null) ...[
                 Padding(
                   padding: const EdgeInsets.only(bottom: 12.0),
-                  child: Text(
-                    'Room code: ${widget.multiplayerCode}',
-                    style: const TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.white,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                    decoration: BoxDecoration(
+                      color: Colors.black,
+                      border: Border.all(color: const Color(0xFF9BBC0F), width: 3),
                     ),
-                    textAlign: TextAlign.center,
+                    child: Text(
+                      'ROOM CODE: ${widget.multiplayerCode}',
+                      style: const TextStyle(
+                        fontSize: 20,
+                        fontFamily: 'Courier',
+                        fontWeight: FontWeight.bold,
+                        color: Color(0xFF9BBC0F),
+                        letterSpacing: 3,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
                   ),
                 ),
               ],
@@ -82,12 +120,21 @@ class _PlayerSelectionScreenState extends State<PlayerSelectionScreen> {
                 padding: const EdgeInsets.symmetric(vertical: 20.0),
                 child: Column(
                   children: [
-                    const Text(
-                      'Number of Players',
-                      style: TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.white,
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: Colors.black,
+                        border: Border.all(color: const Color(0xFF9BBC0F), width: 2),
+                      ),
+                      child: const Text(
+                        '>> NUMBER OF PLAYERS <<',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontFamily: 'Courier',
+                          fontWeight: FontWeight.bold,
+                          color: Color(0xFF9BBC0F),
+                          letterSpacing: 1,
+                        ),
                       ),
                     ),
                     const SizedBox(height: 10),
@@ -95,12 +142,11 @@ class _PlayerSelectionScreenState extends State<PlayerSelectionScreen> {
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: List.generate(4, (index) {
                         final playerCount = index + 1;
+                        final isSelected = numberOfPlayers == playerCount;
                         return Padding(
                           padding: const EdgeInsets.symmetric(horizontal: 8.0),
-                          child: ChoiceChip(
-                            label: Text('$playerCount'),
-                            selected: numberOfPlayers == playerCount,
-                            onSelected: (selected) {
+                          child: GestureDetector(
+                            onTap: () {
                               setState(() {
                                 numberOfPlayers = playerCount;
                                 // Clear selections beyond new player count
@@ -109,13 +155,24 @@ class _PlayerSelectionScreenState extends State<PlayerSelectionScreen> {
                                 }
                               });
                             },
-                            selectedColor: Colors.greenAccent,
-                            labelStyle: TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.bold,
-                              color: numberOfPlayers == playerCount
-                                  ? Colors.black
-                                  : Colors.white,
+                            child: Container(
+                              width: 60,
+                              height: 60,
+                              decoration: BoxDecoration(
+                                color: isSelected ? const Color(0xFF9BBC0F) : Colors.black,
+                                border: Border.all(color: const Color(0xFF9BBC0F), width: 3),
+                              ),
+                              child: Center(
+                                child: Text(
+                                  '$playerCount',
+                                  style: TextStyle(
+                                    fontSize: 32,
+                                    fontFamily: 'Courier',
+                                    fontWeight: FontWeight.bold,
+                                    color: isSelected ? Colors.black : const Color(0xFF9BBC0F),
+                                  ),
+                                ),
+                              ),
                             ),
                           ),
                         );
@@ -147,8 +204,8 @@ class _PlayerSelectionScreenState extends State<PlayerSelectionScreen> {
               // Start Game Button
               Padding(
                 padding: const EdgeInsets.all(20.0),
-                child: ElevatedButton(
-                  onPressed: _canStartGame()
+                child: GestureDetector(
+                  onTap: _canStartGame()
                       ? () {
                           final players = selectedCharacters
                               .take(numberOfPlayers)
@@ -158,19 +215,33 @@ class _PlayerSelectionScreenState extends State<PlayerSelectionScreen> {
                           widget.onStartGame(players);
                         }
                       : null,
-                  style: ElevatedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 60,
-                      vertical: 20,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 60, vertical: 20),
+                    decoration: BoxDecoration(
+                      color: _canStartGame() ? const Color(0xFF9BBC0F) : Colors.grey[800],
+                      border: Border.all(
+                        color: _canStartGame() ? const Color(0xFF9BBC0F) : Colors.grey,
+                        width: 4,
+                      ),
+                      boxShadow: _canStartGame() ? [
+                        BoxShadow(
+                          color: const Color(0xFF9BBC0F).withOpacity(0.5),
+                          blurRadius: 20,
+                          spreadRadius: 2,
+                        ),
+                      ] : null,
                     ),
-                    textStyle: const TextStyle(
-                      fontSize: 24,
-                      fontWeight: FontWeight.bold,
+                    child: Text(
+                      widget.startButtonLabel.toUpperCase(),
+                      style: TextStyle(
+                        fontSize: 24,
+                        fontFamily: 'Courier',
+                        fontWeight: FontWeight.bold,
+                        letterSpacing: 2,
+                        color: _canStartGame() ? Colors.black : Colors.grey,
+                      ),
                     ),
-                    backgroundColor: Colors.greenAccent,
-                    disabledBackgroundColor: Colors.grey,
                   ),
-                  child: Text(widget.startButtonLabel),
                 ),
               ),
             ],
@@ -203,79 +274,86 @@ class _PlayerCharacterSelector extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Card(
+    return Container(
       margin: const EdgeInsets.only(bottom: 16.0),
-      elevation: 4,
-      child: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Player $playerNumber',
-              style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+      padding: const EdgeInsets.all(16.0),
+      decoration: BoxDecoration(
+        color: Colors.black,
+        border: Border.all(color: const Color(0xFF9BBC0F), width: 3),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            '▶ PLAYER $playerNumber',
+            style: const TextStyle(
+              fontSize: 20,
+              fontFamily: 'Courier',
+              fontWeight: FontWeight.bold,
+              color: Color(0xFF9BBC0F),
+              letterSpacing: 1,
             ),
-            const SizedBox(height: 12),
-            Wrap(
-              spacing: 12,
-              runSpacing: 12,
-              children: PlayerCharacter.values.map((character) {
-                final isSelected = selectedCharacter == character;
-                return GestureDetector(
-                  onTap: () => onCharacterSelected(character),
-                  child: Container(
-                    width: 80,
-                    height: 100,
-                    decoration: BoxDecoration(
-                      color: isSelected
-                          ? character.fallbackColor.withOpacity(0.3)
-                          : Colors.grey[200],
-                      border: Border.all(
-                        color: isSelected
-                            ? character.fallbackColor
-                            : Colors.grey[400]!,
-                        width: isSelected ? 3 : 1,
-                      ),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        // Character preview (colored square as fallback)
-                        Container(
-                          width: 50,
-                          height: 50,
-                          decoration: BoxDecoration(
-                            color: character.fallbackColor,
-                            borderRadius: BorderRadius.circular(4),
-                          ),
-                          child: character == PlayerCharacter.character1
-                              ? const Icon(
-                                  Icons.person,
-                                  color: Colors.white,
-                                  size: 30,
-                                )
-                              : null,
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          character.displayName,
-                          style: TextStyle(
-                            fontSize: 10,
-                            fontWeight: isSelected
-                                ? FontWeight.bold
-                                : FontWeight.normal,
-                          ),
-                          textAlign: TextAlign.center,
-                        ),
-                      ],
+          ),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 12,
+            runSpacing: 12,
+            children: PlayerCharacter.values.map((character) {
+              final isSelected = selectedCharacter == character;
+              return GestureDetector(
+                onTap: () => onCharacterSelected(character),
+                child: Container(
+                  width: 80,
+                  height: 100,
+                  decoration: BoxDecoration(
+                    color: isSelected
+                        ? const Color(0xFF9BBC0F)
+                        : const Color(0xFF1A1A1A),
+                    border: Border.all(
+                      color: const Color(0xFF9BBC0F),
+                      width: isSelected ? 4 : 2,
                     ),
                   ),
-                );
-              }).toList(),
-            ),
-          ],
-        ),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      // Character preview (colored square as fallback)
+                      Container(
+                        width: 50,
+                        height: 50,
+                        decoration: BoxDecoration(
+                          color: character.fallbackColor,
+                          border: Border.all(
+                            color: isSelected ? Colors.black : const Color(0xFF9BBC0F),
+                            width: 2,
+                          ),
+                        ),
+                        child: character == PlayerCharacter.character1
+                            ? Icon(
+                                Icons.person,
+                                color: isSelected ? Colors.black : Colors.white,
+                                size: 30,
+                              )
+                            : null,
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        character.displayName.toUpperCase(),
+                        style: TextStyle(
+                          fontSize: 9,
+                          fontFamily: 'Courier',
+                          fontWeight: FontWeight.bold,
+                          color: isSelected ? Colors.black : const Color(0xFF9BBC0F),
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            }).toList(),
+          ),
+        ],
       ),
     );
   }

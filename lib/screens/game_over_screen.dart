@@ -18,15 +18,12 @@ class GameOverScreen extends StatelessWidget {
         width: double.infinity,
         height: double.infinity,
         decoration: BoxDecoration(
-          // Semi-transparent dark overlay
-          color: Colors.black.withOpacity(0.8),
           gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
             colors: [
-              Colors.red[900]!.withOpacity(0.9),
-              Colors.red[700]!.withOpacity(0.9),
-              Colors.orange[600]!.withOpacity(0.9),
+              const Color(0xFF0F380F).withOpacity(0.95),
+              const Color(0xFF306230).withOpacity(0.95),
             ],
           ),
         ),
@@ -34,34 +31,78 @@ class GameOverScreen extends StatelessWidget {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              // Game Over Title
-              const Text(
-                'GAME OVER',
-                style: TextStyle(
-                  fontSize: 64,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.white,
-                  shadows: [
-                    Shadow(
-                      offset: Offset(3, 3),
-                      blurRadius: 8,
-                      color: Colors.black54,
-                    ),
-                  ],
+              // Pixel art skull or game over icon
+              Container(
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(
+                  color: Colors.black,
+                  border: Border.all(color: const Color(0xFFFF0000), width: 4),
+                ),
+                child: const Text(
+                  '💀',
+                  style: TextStyle(fontSize: 80),
                 ),
               ),
+              
+              const SizedBox(height: 30),
+              
+              // Game Over Title with retro effect
+              Stack(
+                children: [
+                  // Shadow layer
+                  Positioned(
+                    top: 4,
+                    left: 4,
+                    child: Text(
+                      'GAME OVER',
+                      style: TextStyle(
+                        fontSize: 64,
+                        fontFamily: 'Courier',
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: 4,
+                        foreground: Paint()
+                          ..style = PaintingStyle.stroke
+                          ..strokeWidth = 8
+                          ..color = Colors.black,
+                      ),
+                    ),
+                  ),
+                  // Main text
+                  Text(
+                    'GAME OVER',
+                    style: const TextStyle(
+                      fontSize: 64,
+                      fontFamily: 'Courier',
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: 4,
+                      color: Color(0xFFFF0000),
+                    ),
+                  ),
+                ],
+              ),
+              
               const SizedBox(height: 20),
               
               // Subtitle
-              const Text(
-                'You were caught in an explosion!',
-                style: TextStyle(
-                  fontSize: 24,
-                  color: Colors.white70,
-                  fontWeight: FontWeight.w300,
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                decoration: BoxDecoration(
+                  color: Colors.black,
+                  border: Border.all(color: const Color(0xFF9BBC0F), width: 2),
                 ),
-                textAlign: TextAlign.center,
+                child: const Text(
+                  '>> YOU WERE CAUGHT IN AN EXPLOSION! <<',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontFamily: 'Courier',
+                    color: Color(0xFF9BBC0F),
+                    fontWeight: FontWeight.bold,
+                    letterSpacing: 1,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
               ),
+              
               const SizedBox(height: 50),
               
               // Action Buttons
@@ -69,19 +110,17 @@ class GameOverScreen extends StatelessWidget {
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   // Play Again Button
-                  _buildActionButton(
-                    label: 'PLAY AGAIN',
-                    icon: Icons.refresh,
-                    color: Colors.green,
+                  _buildRetroButton(
+                    label: '▶ PLAY AGAIN',
+                    color: const Color(0xFF9BBC0F),
                     onPressed: onPlayAgain,
                   ),
                   const SizedBox(width: 30),
                   
                   // Main Menu Button
-                  _buildActionButton(
-                    label: 'MAIN MENU',
-                    icon: Icons.home,
-                    color: Colors.grey[700]!,
+                  _buildRetroButton(
+                    label: '⌂ MAIN MENU',
+                    color: const Color(0xFFFF6600),
                     onPressed: onMainMenu,
                   ),
                 ],
@@ -93,43 +132,35 @@ class GameOverScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildActionButton({
+  Widget _buildRetroButton({
     required String label,
-    required IconData icon,
     required Color color,
     required VoidCallback onPressed,
   }) {
-    return Container(
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(12),
-        boxShadow: [
-          BoxShadow(
-            offset: const Offset(0, 4),
-            blurRadius: 8,
-            color: Colors.black26,
-          ),
-        ],
-      ),
-      child: ElevatedButton.icon(
-        onPressed: onPressed,
-        icon: Icon(icon, size: 24),
-        label: Text(label),
-        style: ElevatedButton.styleFrom(
-          backgroundColor: color,
-          foregroundColor: Colors.white,
-          padding: const EdgeInsets.symmetric(
-            horizontal: 32,
-            vertical: 16,
-          ),
-          textStyle: const TextStyle(
+    return GestureDetector(
+      onTap: onPressed,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
+        decoration: BoxDecoration(
+          color: color,
+          border: Border.all(color: Colors.black, width: 4),
+          boxShadow: [
+            BoxShadow(
+              color: color.withOpacity(0.5),
+              blurRadius: 20,
+              spreadRadius: 2,
+            ),
+          ],
+        ),
+        child: Text(
+          label,
+          style: const TextStyle(
             fontSize: 18,
+            fontFamily: 'Courier',
             fontWeight: FontWeight.bold,
-            letterSpacing: 1.2,
+            letterSpacing: 2,
+            color: Colors.black,
           ),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
-          ),
-          elevation: 0,
         ),
       ),
     );
