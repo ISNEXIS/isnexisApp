@@ -27,6 +27,15 @@ class Player extends PositionComponent {
   Vector2 velocity = Vector2.zero();
   int explosionRadius = 1; // Player's explosion radius (upgradeable)
   int playerHealth = 1; // Player's health (upgradeable)
+  int maxBombs = 1; // Maximum bombs player can place (upgradeable)
+  int currentBombs = 0; // Current number of bombs placed
+
+  // Invincibility
+  bool isInvincible = false;
+  double invincibilityTimer = 0.0;
+  double invincibilityBlinkTimer = 0.0;
+  static const double invincibilityBlinkInterval = 0.1;
+  bool invincibilityVisible = true;
 
   // Components for rendering
   SpriteComponent? spriteComponent;
@@ -43,6 +52,7 @@ class Player extends PositionComponent {
   late List<List<TileType>> Function() getGameMap;
   late bool Function() getIsGameOver;
   late Vector2 Function() getJoystickDirection;
+  late bool Function(Vector2) isBombAtPosition;
 
   Player({
     required this.gridPosition,
@@ -55,6 +65,7 @@ class Player extends PositionComponent {
     required this.getGameMap,
     required this.getIsGameOver,
     required this.getJoystickDirection,
+    required this.isBombAtPosition,
   }) : super(
          position: Vector2(
            gridPosition.x * tileSize + tileSize * 0.1,
@@ -174,6 +185,22 @@ class Player extends PositionComponent {
 
     if (getIsGameOver()) return;
 
+    // Handle invincibility timer
+    if (isInvincible) {
+      invincibilityTimer -= dt;
+      invincibilityBlinkTimer -= dt;
+
+      if (invincibilityTimer <= 0) {
+        isInvincible = false;
+        _setVisible(true);
+      } else if (invincibilityBlinkTimer <= 0) {
+        // Blink effect
+        invincibilityVisible = !invincibilityVisible;
+        _setVisible(invincibilityVisible);
+        invincibilityBlinkTimer = invincibilityBlinkInterval;
+      }
+    }
+
     // Handle bomb throw animation timer
     if (isThrowingBomb) {
       bombThrowTimer -= dt;
@@ -264,6 +291,14 @@ class Player extends PositionComponent {
   bool _canMoveToPixelPosition(Vector2 newPosition) {
     final gameMap = getGameMap();
 
+    // Calculate which grid tile the player's center will be on after moving
+    final newCenterX = ((newPosition.x + size.x / 2) / tileSize).floor();
+    final newCenterY = ((newPosition.y + size.y / 2) / tileSize).floor();
+    
+    // Calculate current grid tile (center)
+    final currentCenterX = ((position.x + size.x / 2) / tileSize).floor();
+    final currentCenterY = ((position.y + size.y / 2) / tileSize).floor();
+
     // Check all four corners of the player rectangle
     final corners = [
       newPosition, // Top-left
@@ -285,6 +320,44 @@ class Player extends PositionComponent {
       }
     }
 
+    // Check for bombs - only block if moving INTO a new tile with a bomb
+    final gridPos = Vector2(newCenterX.toDouble(), newCenterY.toDouble());
+    final movingToNewTile = (newCenterX != currentCenterX || newCenterY != currentCenterY);
+    
+    if (movingToNewTile && isBombAtPosition(gridPos)) {
+      return false;
+    }
+
     return true;
+  }
+
+  void activateInvincibility(double duration) {
+    isInvincible = true;
+    invincibilityTimer = duration;
+    invincibilityBlinkTimer = invincibilityBlinkInterval;
+  }
+
+  void _setVisible(bool visible) {
+    if (spriteComponent != null) {
+      spriteComponent!.opacity = visible ? 1.0 : 0.3;
+    } else if (animationGroupComponent != null) {
+      animationGroupComponent!.opacity = visible ? 1.0 : 0.3;
+    } else if (rectangleComponent != null) {
+      rectangleComponent!.opacity = visible ? 1.0 : 0.3;
+    }
+  }
+
+  bool canPlaceBomb() {
+    return currentBombs < maxBombs;
+  }
+
+  void incrementBombCount() {
+    currentBombs++;
+  }
+
+  void decrementBombCount() {
+    if (currentBombs > 0) {
+      currentBombs--;
+    }
   }
 }
