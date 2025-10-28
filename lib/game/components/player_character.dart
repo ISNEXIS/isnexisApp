@@ -28,9 +28,9 @@ extension PlayerCharacterExtension on PlayerCharacter {
   String get spritePath {
     switch (this) {
       case PlayerCharacter.character1:
-        return 'assets/images/characters/character1.png';
+        return 'assets/images/characters/KawinPlayable.png';
       case PlayerCharacter.character2:
-        return 'assets/images/characters/character2.png';
+        return 'assets/images/characters/EiraPlayable.png';
       case PlayerCharacter.character3:
         return 'assets/images/characters/character3.png';
       case PlayerCharacter.character4:
