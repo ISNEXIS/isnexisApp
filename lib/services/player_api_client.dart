@@ -98,15 +98,29 @@ class PlayerApiClient {
           : trimmedName;
       final clampedPlayers = maxPlayers.clamp(2, 8).toInt();
 
+      print('Attempting to create room at: ${_resolve('/api/rooms')}');
+      print('Request body: roomName=$effectiveName, maxPlayers=$clampedPlayers, hostName=${displayName.trim()}');
+
       final response = await client.post(
-        _resolve('/api/Rooms'),
+        _resolve('/api/rooms'),
         headers: const {'Content-Type': 'application/json'},
         body: jsonEncode(<String, dynamic>{
           'roomName': effectiveName,
           'maxPlayers': clampedPlayers,
           'hostName': displayName.trim(),
         }),
+      ).timeout(
+        const Duration(seconds: 10),
+        onTimeout: () {
+          throw ApiException(
+            'Connection timeout. Please check your server URL and ensure the server is running.',
+            statusCode: 408,
+          );
+        },
       );
+
+      print('Room creation response status: ${response.statusCode}');
+      print('Room creation response body: ${response.body}');
 
       if (response.statusCode == 201) {
         return RoomJoinResult.fromJson(_decodeJson(response.body));
@@ -135,7 +149,7 @@ class PlayerApiClient {
       }
 
       final response = await client.post(
-        _resolve('/api/Rooms/join-by-code'),
+        _resolve('/api/rooms/join-by-code'),
         headers: const {'Content-Type': 'application/json'},
         body: jsonEncode(<String, dynamic>{
           'joinCode': normalizedCode,
