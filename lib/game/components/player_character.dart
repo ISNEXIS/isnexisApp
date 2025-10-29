@@ -18,7 +18,7 @@ extension PlayerCharacterExtension on PlayerCharacter {
       case PlayerCharacter.character2:
         return 'characters/EiraPlayable.png';
       case PlayerCharacter.character3:
-        return null; // Add path when sprite sheet is ready
+        return 'characters/AnsiaPlayable.png'; // Add path when sprite sheet is ready
       case PlayerCharacter.character4:
         return null; // Add path when sprite sheet is ready
     }
@@ -32,7 +32,7 @@ extension PlayerCharacterExtension on PlayerCharacter {
       case PlayerCharacter.character2:
         return 'assets/images/characters/EiraPlayable.png';
       case PlayerCharacter.character3:
-        return 'assets/images/characters/character3.png';
+        return 'assets/images/characters/AnsiaPlayable.png';
       case PlayerCharacter.character4:
         return 'assets/images/characters/character4.png';
     }
