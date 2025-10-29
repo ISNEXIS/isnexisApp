@@ -124,6 +124,10 @@ class _IsnexisState extends State<Isnexis> {
                 _startNewGame(selectedPlayers, isMultiplayer: true);
               },
               joinCode: _pendingMultiplayerConfig?.joinCode,
+              hubClient: _activeHubClient,
+              roomId: _pendingMultiplayerConfig?.roomId,
+              localPlayerId: _pendingMultiplayerConfig?.playerId,
+              localPlayerName: _pendingMultiplayerConfig?.displayName,
             );
           } else {
             return MainMenu(
@@ -222,7 +226,19 @@ class _IsnexisState extends State<Isnexis> {
     });
   }
 
-  void _goToMainMenu() {
+  void _goToMainMenu() async {
+    // Leave multiplayer room if in one
+    final client = _activeHubClient;
+    if (client != null && _pendingMultiplayerConfig != null) {
+      try {
+        print('Leaving multiplayer room from main menu...');
+        await client.leaveRoom(_pendingMultiplayerConfig!.roomId);
+        print('Left room successfully');
+      } catch (e) {
+        print('Error leaving room: $e');
+      }
+    }
+    
     setState(() {
       showGame = false;
       showGameOver = false;
@@ -232,11 +248,12 @@ class _IsnexisState extends State<Isnexis> {
       showMultiplayerSetup = false;
     });
 
-    final client = _activeHubClient;
     if (client != null) {
       _activeHubClient = null;
       Future.microtask(client.dispose);
     }
+    
+    _pendingMultiplayerConfig = null;
   }
 
   void _showSettings(BuildContext context) {
@@ -277,12 +294,37 @@ class _IsnexisState extends State<Isnexis> {
     );
   }
 
-  void _handleMultiplayerSetup(MultiplayerSetupResult result) {
+  void _handleMultiplayerSetup(MultiplayerSetupResult result) async {
+    print('=== HANDLING MULTIPLAYER SETUP ===');
+    print('Base URL: ${result.baseUrl}');
+    print('Room ID: ${result.roomId}');
+    print('Player ID: ${result.playerId}');
+    print('Display Name: ${result.displayName}');
+    print('Join Code: ${result.joinCode}');
+    print('Created Room: ${result.createdRoom}');
+    
+    // Create hub client and connect (but don't join room yet)
+    _activeHubClient?.dispose();
+    final hubClient = GameHubClient(baseUrl: result.baseUrl);
+    
+    try {
+      print('Connecting to hub...');
+      await hubClient.ensureConnected();
+      _activeHubClient = hubClient;
+      print('✓ Connected to hub successfully');
+      print('Connection state: ${hubClient.isConnected}');
+    } catch (e, stackTrace) {
+      print('✗ Error connecting to multiplayer: $e');
+      print('Stack trace: $stackTrace');
+    }
+    
     setState(() {
       _pendingMultiplayerConfig = result;
       showMultiplayerSetup = false;
       showMultiplayerLobby = true;
     });
+    
+    print('=== SETUP COMPLETE, SHOWING LOBBY ===');
   }
 
   @override

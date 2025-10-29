@@ -56,6 +56,8 @@ class BombGame extends FlameGame
   final Map<int, RemotePlayer> _remotePlayers = {};
   final Map<int, Color> _playerColors = {};
   final Map<int, String> _playerNames = {};
+  final Map<int, int> _playerIdToRoomPosition = {}; // Maps server playerId to room position (1-4)
+  final List<PlayerSummary> _pendingRemotePlayers = []; // Store players until grid is ready
 
   bool _networkJoined = false;
   static const double _movementBroadcastInterval = 0.1;
@@ -128,12 +130,60 @@ class BombGame extends FlameGame
     _renderMap();
     _spawnPlayer();
 
+    // Update any remote players that were created before grid initialization
+    _repositionRemotePlayers();
+
     for (final remote in _remotePlayers.values) {
       remote.updateTileSize(tileSize);
       if (!remote.isMounted) {
         add(remote);
       }
     }
+  }
+
+  void _repositionRemotePlayers() {
+    print('=== REPOSITIONING REMOTE PLAYERS ===');
+    print('Grid: ${gridWidth}x$gridHeight, Tile: $tileSize');
+    print('Pending players: ${_pendingRemotePlayers.length}');
+    print('Existing remote players: ${_remotePlayers.length}');
+
+    // First, create any pending remote players
+    for (final pendingPlayer in _pendingRemotePlayers) {
+      print('Creating pending player: ${pendingPlayer.playerId}');
+      _ensureRemotePlayer(pendingPlayer);
+    }
+    _pendingRemotePlayers.clear();
+
+    // Then reposition existing players (in case they were created with wrong dimensions)
+    if (_remotePlayers.isEmpty) {
+      print('No remote players to reposition');
+      return;
+    }
+
+    final spawnPositions = [
+      Vector2(1, 1), // Top-left - Player ID 1
+      Vector2(gridWidth - 2.0, 1), // Top-right - Player ID 2
+      Vector2(1, gridHeight - 2.0), // Bottom-left - Player ID 3
+      Vector2(gridWidth - 2.0, gridHeight - 2.0), // Bottom-right - Player ID 4
+    ];
+
+    for (final entry in _remotePlayers.entries) {
+      final playerId = entry.key;
+      final remote = entry.value;
+      
+      // Get room position from mapping, default to position based on playerId if not found
+      final roomPosition = _playerIdToRoomPosition[playerId] ?? playerId;
+      final spawnIndex = (roomPosition - 1).clamp(0, spawnPositions.length - 1);
+      final spawnPos = spawnPositions[spawnIndex];
+      final pixelPos = Vector2(spawnPos.x * tileSize, spawnPos.y * tileSize);
+      
+      remote.position = pixelPos;
+      remote.updateTileSize(tileSize);
+      
+      print('Repositioned Player $playerId (Room Pos $roomPosition) to grid(${spawnPos.x}, ${spawnPos.y}) = pixel$pixelPos');
+    }
+    
+    print('Total remote players after repositioning: ${_remotePlayers.length}');
   }
 
   @override
@@ -215,23 +265,84 @@ class BombGame extends FlameGame
   void _spawnPlayer() {
     // Spawn positions for up to 4 players (corners of the map)
     final spawnPositions = [
-      Vector2(1, 1), // Top-left
-      Vector2(gridWidth - 2, 1), // Top-right
-      Vector2(1, gridHeight - 2), // Bottom-left
-      Vector2(gridWidth - 2, gridHeight - 2), // Bottom-right
+      Vector2(1, 1), // Top-left - Player ID 1
+      Vector2(gridWidth - 2, 1), // Top-right - Player ID 2
+      Vector2(1, gridHeight - 2), // Bottom-left - Player ID 3
+      Vector2(gridWidth - 2, gridHeight - 2), // Bottom-right - Player ID 4
     ];
 
     // Clear existing players
     players.clear();
     alivePlayers = selectedPlayers.length;
 
-    // Spawn each player
+    // In multiplayer mode, only create local player
+    if (_networkEnabled && networkPlayerId != null) {
+      print('=== MULTIPLAYER SPAWN ===');
+      print('Network Player ID: $networkPlayerId');
+      print('Local Player ID: $localPlayerId');
+      print('Selected Players: ${selectedPlayers.length}');
+      print('Player ID to Room Position map: $_playerIdToRoomPosition');
+      
+      // Get room position (1-4) from mapping
+      // If not yet set (roster hasn't arrived), we need to wait or use a default
+      int roomPosition;
+      if (_playerIdToRoomPosition.containsKey(networkPlayerId)) {
+        roomPosition = _playerIdToRoomPosition[networkPlayerId]!;
+        print('Using mapped room position: $roomPosition');
+      } else {
+        // Roster hasn't arrived yet - this shouldn't happen but handle gracefully
+        // For now, assume position 1 and it will be corrected when roster arrives
+        print('WARNING: Room position not yet assigned, using temporary position 1');
+        roomPosition = 1;
+      }
+      
+      print('Room Position for Player $networkPlayerId: $roomPosition');
+      
+      // Use room position (1-based) to determine spawn position
+      final spawnIndex = (roomPosition - 1).clamp(0, spawnPositions.length - 1);
+      final spawnPos = spawnPositions[spawnIndex];
+      
+      print('Spawning local player at index $spawnIndex (${spawnPos.x}, ${spawnPos.y})');
+      
+      // Get the character for this player
+      // For now, use the first selected player's character (will improve later)
+      final playerData = selectedPlayers.isNotEmpty 
+          ? selectedPlayers[spawnIndex < selectedPlayers.length ? spawnIndex : 0]
+          : PlayerSelectionData(character: PlayerCharacter.character1, isBot: false);
+      
+      // Create only the local player
+      final player = Player(
+        gridPosition: spawnPos,
+        color: playerData.character.fallbackColor,
+        character: playerData.character,
+        playerNumber: roomPosition, // Use room position (1-4)
+        tileSize: tileSize,
+        gridWidth: gridWidth,
+        gridHeight: gridHeight,
+        getGameMap: () => gameMap,
+        getIsGameOver: () => isGameOver,
+        getJoystickDirection: () => Vector2(joystickDirection.dx, joystickDirection.dy),
+        isBombAtPosition: _isBombAtPosition,
+      );
+      
+      player.playerHealth = 1;
+      players.add(player);
+      add(player);
+      
+      print('Local player spawned at grid position: ${player.gridPosition}');
+      print('Local player pixel position: ${player.position}');
+      
+      return;
+    }
+
+    print('=== SINGLE PLAYER SPAWN ===');
+    // Single player / local mode - create all players
     for (int i = 0; i < selectedPlayers.length; i++) {
       final playerData = selectedPlayers[i];
       Player player;
       
       if (playerData.isBot) {
-        // Create bot player
+        // Create bot player (hard difficulty)
         final botPlayer = BotPlayer(
           gridPosition: spawnPositions[i],
           color: playerData.character.fallbackColor,
@@ -244,7 +355,6 @@ class BombGame extends FlameGame
           getIsGameOver: () => isGameOver,
           getJoystickDirection: () => Vector2.zero(), // Bots don't use joystick
           isBombAtPosition: _isBombAtPosition,
-          difficulty: playerData.botDifficulty ?? BotDifficulty.medium,
           getOtherPlayers: () => players, // Give bot access to all players for enemy tracking
         );
         
@@ -403,9 +513,57 @@ class BombGame extends FlameGame
   }
 
   void _applyRemoteRoster(List<PlayerSummary> roster) {
+    print('=== APPLY REMOTE ROSTER ===');
+    print('Roster size: ${roster.length}');
+    print('My player ID: $networkPlayerId');
+    
+    // Use roster ORDER (not sorted IDs) to assign positions
+    // The server sends players in join order, which is what we want
+    final allPlayers = <PlayerSummary>[];
+    
+    // Add roster players first (they come in join order from server)
+    allPlayers.addAll(roster);
+    
+    // Add ourselves if not in roster
+    bool foundSelf = roster.any((p) => p.playerId == networkPlayerId);
+    if (networkPlayerId != null && !foundSelf) {
+      print('Adding myself to roster for position calculation');
+      // We need to know if we're the host (first) or a joiner
+      // If roster is empty, we're first (host)
+      // If roster has players, we add ourselves at the end (we joined after them)
+      if (roster.isEmpty) {
+        // We're the host, position 1
+        allPlayers.insert(0, PlayerSummary(
+          playerId: networkPlayerId!,
+          displayName: localPlayerName ?? 'You',
+        ));
+      } else {
+        // We joined after others, add at end
+        allPlayers.add(PlayerSummary(
+          playerId: networkPlayerId!,
+          displayName: localPlayerName ?? 'You',
+        ));
+      }
+    }
+    
+    print('All players in join order:');
+    for (int i = 0; i < allPlayers.length; i++) {
+      print('  Position ${i + 1}: Player ${allPlayers[i].playerId} (${allPlayers[i].displayName})');
+    }
+    
+    // Assign room positions (1-4) based on roster order (join order)
+    for (int i = 0; i < allPlayers.length; i++) {
+      final playerId = allPlayers[i].playerId;
+      final roomPosition = i + 1; // 1-based position
+      _playerIdToRoomPosition[playerId] = roomPosition;
+      print('Player ID $playerId -> Room Position $roomPosition (${allPlayers[i].displayName})');
+    }
+    
     final desiredIds = <int>{};
     for (final summary in roster) {
+      print('Roster entry: ${summary.playerId} - ${summary.displayName}');
       if (summary.playerId == networkPlayerId) {
+        print('  -> Skipping (this is me)');
         continue;
       }
       _playerNames[summary.playerId] = summary.displayName;
@@ -423,6 +581,9 @@ class BombGame extends FlameGame
     if (roster.isNotEmpty) {
       notifyListeners();
     }
+    
+    print('Remote players after roster: ${_remotePlayers.keys.toList()}');
+    print('Final position mapping: $_playerIdToRoomPosition');
   }
 
   void _handleRemotePlayerJoined(PlayerSummary summary) {
@@ -463,16 +624,52 @@ class BombGame extends FlameGame
       return;
     }
 
+    print('=== ENSURE REMOTE PLAYER ===');
+    print('Remote Player ID: ${summary.playerId}');
+    print('Remote Player Name: ${summary.displayName}');
+    print('Grid dimensions: ${gridWidth}x$gridHeight');
+    print('Tile size: $tileSize');
+
+    // Store player name regardless
     _playerNames[summary.playerId] = summary.displayName;
+    
+    // If grid not initialized yet, add to pending list
+    if (gridWidth == 0 || gridHeight == 0 || tileSize == 0) {
+      print('Grid not ready, adding to pending list');
+      // Check if already in pending list
+      if (!_pendingRemotePlayers.any((p) => p.playerId == summary.playerId)) {
+        _pendingRemotePlayers.add(summary);
+      }
+      return;
+    }
+
     final color = _colorForPlayer(summary.playerId);
     final existing = _remotePlayers[summary.playerId];
 
     if (existing != null) {
+      print('Remote player ${summary.playerId} already exists, updating name only');
       existing.displayName = summary.displayName;
       return;
     }
 
     final effectiveTileSize = tileSize == 0 ? 1.0 : tileSize;
+    
+    // Calculate spawn position based on room position (1-4)
+    final spawnPositions = [
+      Vector2(1, 1), // Top-left - Position 1
+      Vector2(gridWidth - 2.0, 1), // Top-right - Position 2
+      Vector2(1, gridHeight - 2.0), // Bottom-left - Position 3
+      Vector2(gridWidth - 2.0, gridHeight - 2.0), // Bottom-right - Position 4
+    ];
+    
+    // Get room position from mapping, default to position based on playerId if not found
+    final roomPosition = _playerIdToRoomPosition[summary.playerId] ?? summary.playerId;
+    final spawnIndex = (roomPosition - 1).clamp(0, spawnPositions.length - 1);
+    final spawnPos = spawnPositions[spawnIndex];
+    
+    print('Remote player ${summary.playerId} (Room Pos $roomPosition) spawn index: $spawnIndex');
+    print('Remote player ${summary.playerId} grid spawn pos: (${spawnPos.x}, ${spawnPos.y})');
+    
     final remotePlayer = RemotePlayer(
       playerId: summary.playerId,
       displayName: summary.displayName,
@@ -482,9 +679,16 @@ class BombGame extends FlameGame
     if (tileSize > 0) {
       remotePlayer.updateTileSize(tileSize);
     }
-    remotePlayer.position = Vector2.all(tileSize);
+    // Set spawn position based on room position
+    final pixelPos = Vector2(spawnPos.x * tileSize, spawnPos.y * tileSize);
+    remotePlayer.position = pixelPos;
+    
+    print('Remote player ${summary.playerId} pixel position: $pixelPos');
+    
     add(remotePlayer);
     _remotePlayers[summary.playerId] = remotePlayer;
+    
+    print('Remote player ${summary.playerId} added to game');
   }
 
   void _removeRemotePlayer(int playerId) {

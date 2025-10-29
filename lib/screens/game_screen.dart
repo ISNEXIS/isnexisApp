@@ -46,6 +46,12 @@ class _GameScreenState extends State<GameScreen> {
   Widget build(BuildContext context) {
     final players = widget.game.players;
     final firstPlayer = players.isNotEmpty ? players.first : null;
+    
+    // In multiplayer, show the player number from the actual player object
+    // In single player, show P1
+    final playerLabel = firstPlayer != null 
+        ? 'P${firstPlayer.playerNumber}' 
+        : 'P1';
 
     // Get screen dimensions
     final screenSize = MediaQuery.of(context).size;
@@ -145,7 +151,7 @@ class _GameScreenState extends State<GameScreen> {
                   const SizedBox(height: 8),
                   if (firstPlayer != null)
                     Text(
-                      '❤️ P1: ${firstPlayer.playerHealth}',
+                      '❤️ $playerLabel: ${firstPlayer.playerHealth}',
                       style: const TextStyle(
                         color: Colors.white,
                         fontSize: 18,
@@ -304,9 +310,25 @@ class _GameScreenState extends State<GameScreen> {
                         width: 240,
                         height: 60,
                         child: GestureDetector(
-                          onTap: () {
-                            // Unpause and go back to menu
+                          onTap: () async {
+                            // Unpause the game
                             widget.game.paused = false;
+                            
+                            // If multiplayer, leave the room first
+                            if (widget.game.networkClient != null && 
+                                widget.game.networkRoomId != null) {
+                              try {
+                                print('Leaving multiplayer room...');
+                                await widget.game.networkClient!.leaveRoom(
+                                  widget.game.networkRoomId!
+                                );
+                                print('Left room successfully');
+                              } catch (e) {
+                                print('Error leaving room: $e');
+                              }
+                            }
+                            
+                            // Go back to menu
                             widget.onBackToMenu();
                           },
                           child: Container(

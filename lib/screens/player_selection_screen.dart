@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 
-import '../game/components/bot_player.dart';
 import '../game/components/player_character.dart';
 import '../models/player_selection_data.dart';
 
@@ -280,14 +279,12 @@ class _PlayerCharacterSelector extends StatefulWidget {
 
 class _PlayerCharacterSelectorState extends State<_PlayerCharacterSelector> {
   bool isBot = false;
-  BotDifficulty botDifficulty = BotDifficulty.medium;
 
   @override
   void initState() {
     super.initState();
     if (widget.selectedPlayer != null) {
       isBot = widget.selectedPlayer!.isBot;
-      botDifficulty = widget.selectedPlayer!.botDifficulty ?? BotDifficulty.medium;
     }
   }
 
@@ -325,7 +322,6 @@ class _PlayerCharacterSelectorState extends State<_PlayerCharacterSelector> {
                       widget.onPlayerSelected(PlayerSelectionData(
                         character: widget.selectedPlayer!.character,
                         isBot: isBot,
-                        botDifficulty: isBot ? botDifficulty : null,
                       ));
                     }
                   });
@@ -351,75 +347,8 @@ class _PlayerCharacterSelectorState extends State<_PlayerCharacterSelector> {
           ),
           const SizedBox(height: 12),
           
-          // Bot difficulty selector (only shown for bots)
-          if (isBot) ...[
-            Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: const Color(0xFF1A1A1A),
-                border: Border.all(color: const Color(0xFF9BBC0F), width: 2),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    'BOT DIFFICULTY:',
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontFamily: 'Courier',
-                      fontWeight: FontWeight.bold,
-                      color: Color(0xFF9BBC0F),
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Row(
-                    children: BotDifficulty.values.map((diff) {
-                      final isSelected = botDifficulty == diff;
-                      return Expanded(
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 4),
-                          child: GestureDetector(
-                            onTap: () {
-                              setState(() {
-                                botDifficulty = diff;
-                                if (widget.selectedPlayer != null) {
-                                  widget.onPlayerSelected(PlayerSelectionData(
-                                    character: widget.selectedPlayer!.character,
-                                    isBot: true,
-                                    botDifficulty: botDifficulty,
-                                  ));
-                                }
-                              });
-                            },
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(vertical: 8),
-                              decoration: BoxDecoration(
-                                color: isSelected ? const Color(0xFF9BBC0F) : const Color(0xFF306230),
-                                border: Border.all(color: const Color(0xFF9BBC0F), width: 2),
-                              ),
-                              child: Text(
-                                diff.name.toUpperCase(),
-                                textAlign: TextAlign.center,
-                                style: TextStyle(
-                                  fontSize: 10,
-                                  fontFamily: 'Courier',
-                                  fontWeight: FontWeight.bold,
-                                  color: isSelected ? Colors.black : const Color(0xFF9BBC0F),
-                                ),
-                              ),
-                            ),
-                          ),
-                        ),
-                      );
-                    }).toList(),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 12),
-          ],
-          
           // Character selection
+          const SizedBox(height: 12),
           Wrap(
             spacing: 12,
             runSpacing: 12,
@@ -430,7 +359,6 @@ class _PlayerCharacterSelectorState extends State<_PlayerCharacterSelector> {
                   widget.onPlayerSelected(PlayerSelectionData(
                     character: character,
                     isBot: isBot,
-                    botDifficulty: isBot ? botDifficulty : null,
                   ));
                 },
                 child: Container(

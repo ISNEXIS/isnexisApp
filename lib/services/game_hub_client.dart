@@ -24,6 +24,12 @@ class GameHubClient {
   final _playerLeftController = StreamController<PlayerSummary>.broadcast();
   final _playerDisconnectedController =
       StreamController<PlayerSummary>.broadcast();
+  final _playerReadyController = 
+      StreamController<PlayerReadyEvent>.broadcast();
+  final _characterSelectedController =
+      StreamController<CharacterSelectedEvent>.broadcast();
+  final _gameStartController = 
+      StreamController<GameStartEvent>.broadcast();
   final _playerMovementController =
       StreamController<PlayerMovementEvent>.broadcast();
   final _bombPlacedController = StreamController<BombPlacedEvent>.broadcast();
@@ -42,6 +48,12 @@ class GameHubClient {
   Stream<PlayerSummary> get playerLeftStream => _playerLeftController.stream;
   Stream<PlayerSummary> get playerDisconnectedStream =>
       _playerDisconnectedController.stream;
+  Stream<PlayerReadyEvent> get playerReadyStream =>
+      _playerReadyController.stream;
+  Stream<CharacterSelectedEvent> get characterSelectedStream =>
+      _characterSelectedController.stream;
+  Stream<GameStartEvent> get gameStartStream =>
+      _gameStartController.stream;
   Stream<PlayerMovementEvent> get playerMovementStream =>
       _playerMovementController.stream;
   Stream<BombPlacedEvent> get bombPlacedStream => _bombPlacedController.stream;
@@ -105,6 +117,27 @@ class GameHubClient {
     await _invoke('LeaveRoom', args: [roomId]);
   }
 
+  Future<void> setPlayerReady(int roomId, int playerId, bool isReady) async {
+    // Note: Server API might not support this yet
+    await _invoke('SetPlayerReady', args: [roomId, playerId, isReady]);
+  }
+
+  Future<void> selectCharacter(int roomId, int playerId, int characterIndex) async {
+    print('Invoking SelectCharacter: roomId=$roomId, playerId=$playerId, characterIndex=$characterIndex');
+    _logger.info('Invoking SelectCharacter: roomId=$roomId, playerId=$playerId, characterIndex=$characterIndex');
+    await _invoke('SelectCharacter', args: [roomId, playerId, characterIndex]);
+    print('SelectCharacter invoked successfully');
+    _logger.info('SelectCharacter invoked successfully');
+  }
+
+  Future<void> startGame(int roomId) async {
+    print('Invoking StartGame: roomId=$roomId');
+    _logger.info('Invoking StartGame: roomId=$roomId');
+    await _invoke('StartGame', args: [roomId]);
+    print('StartGame invoked successfully');
+    _logger.info('StartGame invoked successfully');
+  }
+
   Future<void> sendPlayerMovement(int roomId, JsonMap position) async {
     await _invoke('SendPlayerMovement', args: [roomId, position]);
   }
@@ -145,6 +178,9 @@ class GameHubClient {
       _playerJoinedController.close(),
       _playerLeftController.close(),
       _playerDisconnectedController.close(),
+      _playerReadyController.close(),
+      _characterSelectedController.close(),
+      _gameStartController.close(),
       _playerMovementController.close(),
       _bombPlacedController.close(),
       _explosionController.close(),
@@ -204,6 +240,10 @@ class GameHubClient {
     });
 
     _registerHandlers(connection);
+    
+    // Debug: Log all incoming events
+    connection.serverTimeoutInMilliseconds = 30000;
+    
     return connection;
   }
 
@@ -239,6 +279,69 @@ class GameHubClient {
       );
       if (summary != null) {
         _playerDisconnectedController.add(summary);
+      }
+    });
+
+    connection.on('PlayerReady', (args) {
+      if (args != null && args.length >= 2) {
+        final playerId = args[0] as int?;
+        final isReady = args[1] as bool?;
+        if (playerId != null && isReady != null) {
+          _playerReadyController.add(PlayerReadyEvent(
+            playerId: playerId,
+            isReady: isReady,
+          ));
+        }
+      }
+    });
+
+    connection.on('CharacterSelected', (args) {
+      print('>>> CharacterSelected event received from server <<<');
+      print('Args: $args');
+      _logger.info('>>> CharacterSelected event received from server <<<');
+      _logger.info('Args: $args');
+      if (args != null && args.length >= 2) {
+        final playerId = args[0] as int?;
+        final characterIndex = args[1] as int?;
+        print('Parsed: playerId=$playerId, characterIndex=$characterIndex');
+        _logger.info('Parsed: playerId=$playerId, characterIndex=$characterIndex');
+        if (playerId != null && characterIndex != null) {
+          _characterSelectedController.add(CharacterSelectedEvent(
+            playerId: playerId,
+            characterIndex: characterIndex,
+          ));
+          print('CharacterSelectedEvent added to stream');
+          _logger.info('CharacterSelectedEvent added to stream');
+        } else {
+          print('WARNING: playerId or characterIndex is null');
+          _logger.warning('playerId or characterIndex is null');
+        }
+      } else {
+        print('WARNING: CharacterSelected args invalid: $args');
+        _logger.warning('CharacterSelected args invalid: $args');
+      }
+    });
+
+    connection.on('GameStarted', (args) {
+      print('>>> GameStarted event received from server <<<');
+      print('Args: $args');
+      _logger.info('>>> GameStarted event received from server <<<');
+      _logger.info('Args: $args');
+      if (args != null && args.isNotEmpty) {
+        final roomId = args[0] as int?;
+        print('Parsed roomId: $roomId');
+        _logger.info('Parsed roomId: $roomId');
+        if (roomId != null) {
+          _gameStartController.add(GameStartEvent(roomId: roomId));
+          print('GameStartEvent added to stream');
+          _logger.info('GameStartEvent added to stream');
+        } else {
+          print('WARNING: roomId is null');
+          _logger.warning('roomId is null');
+        }
+      } else {
+        print('WARNING: GameStarted args invalid: $args');
+        _logger.warning('GameStarted args invalid: $args');
       }
     });
 
@@ -444,6 +547,26 @@ class GameEndedEvent {
 
   final int? winnerId;
   final JsonMap? summary;
+}
+
+class PlayerReadyEvent {
+  PlayerReadyEvent({required this.playerId, required this.isReady});
+
+  final int playerId;
+  final bool isReady;
+}
+
+class GameStartEvent {
+  GameStartEvent({required this.roomId});
+
+  final int roomId;
+}
+
+class CharacterSelectedEvent {
+  CharacterSelectedEvent({required this.playerId, required this.characterIndex});
+
+  final int playerId;
+  final int characterIndex;
 }
 
 class PlayerSummary {
