@@ -231,7 +231,7 @@ class BombGame extends FlameGame
       Player player;
       
       if (playerData.isBot) {
-        // Create bot player
+        // Create bot player (hard difficulty)
         final botPlayer = BotPlayer(
           gridPosition: spawnPositions[i],
           color: playerData.character.fallbackColor,
@@ -244,7 +244,6 @@ class BombGame extends FlameGame
           getIsGameOver: () => isGameOver,
           getJoystickDirection: () => Vector2.zero(), // Bots don't use joystick
           isBombAtPosition: _isBombAtPosition,
-          difficulty: playerData.botDifficulty ?? BotDifficulty.medium,
           getOtherPlayers: () => players, // Give bot access to all players for enemy tracking
         );
         

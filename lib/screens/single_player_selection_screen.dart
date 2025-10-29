@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 
-import '../game/components/bot_player.dart';
 import '../game/components/player_character.dart';
 import '../models/player_selection_data.dart';
 
@@ -248,7 +247,6 @@ class _PlayerCharacterSelector extends StatefulWidget {
 class _PlayerCharacterSelectorState extends State<_PlayerCharacterSelector> {
   PlayerCharacter selectedCharacter = PlayerCharacter.character1;
   bool isBot = false;
-  BotDifficulty botDifficulty = BotDifficulty.medium;
 
   @override
   void initState() {
@@ -256,7 +254,6 @@ class _PlayerCharacterSelectorState extends State<_PlayerCharacterSelector> {
     if (widget.selectedData != null) {
       selectedCharacter = widget.selectedData!.character;
       isBot = widget.selectedData!.isBot;
-      botDifficulty = widget.selectedData!.botDifficulty ?? BotDifficulty.medium;
     } else if (widget.playerNumber > 1) {
       // Default to bot for players 2+
       isBot = true;
@@ -268,7 +265,6 @@ class _PlayerCharacterSelectorState extends State<_PlayerCharacterSelector> {
     widget.onChanged(PlayerSelectionData(
       character: selectedCharacter,
       isBot: isBot,
-      botDifficulty: isBot ? botDifficulty : null,
     ));
   }
 
@@ -381,56 +377,6 @@ class _PlayerCharacterSelectorState extends State<_PlayerCharacterSelector> {
             }).toList(),
           ),
 
-          // Bot difficulty (if bot)
-          if (isBot) ...[
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                const Text(
-                  'DIFFICULTY: ',
-                  style: TextStyle(
-                    fontSize: 14,
-                    fontFamily: 'Courier',
-                    color: Color(0xFF9BBC0F),
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                for (var diff in BotDifficulty.values)
-                  Expanded(
-                    child: GestureDetector(
-                      onTap: () {
-                        setState(() {
-                          botDifficulty = diff;
-                          _notifyChange();
-                        });
-                      },
-                      child: Container(
-                        margin: const EdgeInsets.symmetric(horizontal: 2),
-                        padding: const EdgeInsets.symmetric(vertical: 6),
-                        decoration: BoxDecoration(
-                          color: botDifficulty == diff
-                              ? const Color(0xFF9BBC0F)
-                              : Colors.black,
-                          border: Border.all(color: const Color(0xFF9BBC0F), width: 2),
-                        ),
-                        alignment: Alignment.center,
-                        child: Text(
-                          diff.name.toUpperCase(),
-                          style: TextStyle(
-                            fontSize: 12,
-                            fontFamily: 'Courier',
-                            color: botDifficulty == diff
-                                ? Colors.black
-                                : const Color(0xFF9BBC0F),
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-              ],
-            ),
-          ],
         ],
       ),
     );

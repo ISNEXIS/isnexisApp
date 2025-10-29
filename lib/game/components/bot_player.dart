@@ -5,22 +5,15 @@ import 'package:flame/components.dart';
 import 'player.dart';
 import 'tile_type.dart';
 
-enum BotDifficulty {
-  easy,
-  medium,
-  hard,
-}
-
 class BotPlayer extends Player {
-  final BotDifficulty difficulty;
   final Random _random = Random();
   
   // AI state
   Vector2? targetPosition;
   double thinkTimer = 0.0;
-  double thinkInterval = 0.0;
+  double thinkInterval = 0.15; // Hard difficulty: Lightning fast reactions
   double bombPlaceTimer = 0.0;
-  double bombPlaceInterval = 0.0;
+  double bombPlaceInterval = 0.9; // Hard difficulty: Very aggressive bomb placement
   bool isRunningFromBomb = false;
   Vector2? dangerPosition;
   List<Vector2> dangerZones = []; // All dangerous positions
@@ -54,29 +47,9 @@ class BotPlayer extends Player {
     required super.getIsGameOver,
     required super.getJoystickDirection,
     required super.isBombAtPosition,
-    this.difficulty = BotDifficulty.medium,
     this.onBombPlaceRequest,
     this.getOtherPlayers,
   }) {
-    _setDifficultyParameters();
-  }
-
-  void _setDifficultyParameters() {
-    switch (difficulty) {
-      case BotDifficulty.easy:
-        thinkInterval = 0.8; // Slower reactions
-        bombPlaceInterval = 3.5; // Rarely places bombs
-        break;
-      case BotDifficulty.medium:
-        thinkInterval = 0.4; // Quick reactions
-        bombPlaceInterval = 1.8; // Places bombs strategically
-        break;
-      case BotDifficulty.hard:
-        thinkInterval = 0.2; // Very fast reactions
-        bombPlaceInterval = 1.2; // Aggressive bomb placement
-        break;
-    }
-    
     thinkTimer = thinkInterval;
     bombPlaceTimer = bombPlaceInterval;
   }
@@ -115,6 +88,8 @@ class BotPlayer extends Player {
     isRunningFromBomb = false;
     dangerPosition = null;
     
+    final gameMap = getGameMap();
+    
     // Check for bombs and calculate their blast zones
     final checkRadius = explosionRadius + 3; // Check beyond explosion radius
     for (int dy = -checkRadius; dy <= checkRadius; dy++) {
@@ -125,24 +100,61 @@ class BotPlayer extends Player {
         );
         
         if (isBombAtPosition(checkPos)) {
-          // Add bomb position
+          // Add bomb position as highly dangerous
           dangerZones.add(checkPos);
           
-          // Calculate blast zone (cross pattern)
-          final blastRadius = explosionRadius; // Assume standard blast
+          // Calculate blast zone with wall blocking
+          final blastRadius = explosionRadius;
           
-          // Horizontal blast
-          for (int i = -blastRadius; i <= blastRadius; i++) {
-            dangerZones.add(Vector2(checkPos.x + i, checkPos.y));
+          // Horizontal blast (right)
+          for (int i = 1; i <= blastRadius; i++) {
+            final blastPos = Vector2(checkPos.x + i, checkPos.y);
+            final x = blastPos.x.toInt();
+            final y = blastPos.y.toInt();
+            if (x >= 0 && x < gridWidth && y >= 0 && y < gridHeight) {
+              dangerZones.add(blastPos);
+              // Stop at walls
+              if (gameMap[y][x] != TileType.empty) break;
+            }
           }
           
-          // Vertical blast
-          for (int i = -blastRadius; i <= blastRadius; i++) {
-            dangerZones.add(Vector2(checkPos.x, checkPos.y + i));
+          // Horizontal blast (left)
+          for (int i = 1; i <= blastRadius; i++) {
+            final blastPos = Vector2(checkPos.x - i, checkPos.y);
+            final x = blastPos.x.toInt();
+            final y = blastPos.y.toInt();
+            if (x >= 0 && x < gridWidth && y >= 0 && y < gridHeight) {
+              dangerZones.add(blastPos);
+              if (gameMap[y][x] != TileType.empty) break;
+            }
           }
           
-          // Mark as in danger
-          if (!isRunningFromBomb) {
+          // Vertical blast (down)
+          for (int i = 1; i <= blastRadius; i++) {
+            final blastPos = Vector2(checkPos.x, checkPos.y + i);
+            final x = blastPos.x.toInt();
+            final y = blastPos.y.toInt();
+            if (x >= 0 && x < gridWidth && y >= 0 && y < gridHeight) {
+              dangerZones.add(blastPos);
+              if (gameMap[y][x] != TileType.empty) break;
+            }
+          }
+          
+          // Vertical blast (up)
+          for (int i = 1; i <= blastRadius; i++) {
+            final blastPos = Vector2(checkPos.x, checkPos.y - i);
+            final x = blastPos.x.toInt();
+            final y = blastPos.y.toInt();
+            if (x >= 0 && x < gridWidth && y >= 0 && y < gridHeight) {
+              dangerZones.add(blastPos);
+              if (gameMap[y][x] != TileType.empty) break;
+            }
+          }
+          
+          // Check if bot is currently in danger
+          if (dangerZones.any((d) => 
+              d.x.toInt() == gridPosition.x.toInt() && 
+              d.y.toInt() == gridPosition.y.toInt())) {
             isRunningFromBomb = true;
             dangerPosition = checkPos;
           }
@@ -156,39 +168,17 @@ class BotPlayer extends Player {
       // PRIORITY 1: Escape from danger
       _findSafeEscapeRoute();
     } else {
-      // Strategic decision based on difficulty
+      // Hard difficulty: Aggressive and intelligent - prioritizes combat and positioning
       final otherPlayers = getOtherPlayers?.call() ?? [];
       final aliveEnemies = otherPlayers.where((p) => p.playerHealth > 0 && p != this).toList();
       
-      switch (difficulty) {
-        case BotDifficulty.easy:
-          // Easy: Just destroy walls, avoid enemies
-          if (_random.nextDouble() < 0.7) {
-            _findDestructibleWall();
-          } else {
-            _randomWalk();
-          }
-          break;
-          
-        case BotDifficulty.medium:
-          // Medium: Mix of wall destruction and enemy tracking
-          if (aliveEnemies.isNotEmpty && _random.nextDouble() < 0.4) {
-            _trackNearestEnemy(aliveEnemies);
-          } else if (_random.nextDouble() < 0.7) {
-            _findStrategicPosition();
-          } else {
-            _findDestructibleWall();
-          }
-          break;
-          
-        case BotDifficulty.hard:
-          // Hard: Aggressive enemy hunting and strategic positioning
-          if (aliveEnemies.isNotEmpty && _random.nextDouble() < 0.6) {
-            _huntEnemy(aliveEnemies);
-          } else {
-            _findStrategicPosition();
-          }
-          break;
+      final action = _random.nextDouble();
+      if (aliveEnemies.isNotEmpty && action < 0.55) {
+        _huntEnemy(aliveEnemies);
+      } else if (action < 0.8) {
+        _findStrategicPosition();
+      } else {
+        _findDestructibleWall();
       }
     }
   }
@@ -257,31 +247,6 @@ class BotPlayer extends Player {
       }
     }
     return null;
-  }
-
-  void _trackNearestEnemy(List<Player> enemies) {
-    Player? nearest;
-    double minDistance = double.infinity;
-    
-    for (final enemy in enemies) {
-      final distance = gridPosition.distanceTo(enemy.gridPosition);
-      if (distance < minDistance) {
-        minDistance = distance;
-        nearest = enemy;
-      }
-    }
-    
-    if (nearest != null) {
-      // Move towards general area but maintain safe distance
-      final safeDistance = 3.0;
-      if (minDistance > safeDistance) {
-        targetEnemy = nearest.gridPosition;
-        _moveTowardsEnemy(nearest.gridPosition);
-      } else {
-        // Too close, maintain distance
-        _findStrategicPosition();
-      }
-    }
   }
 
   void _huntEnemy(List<Player> enemies) {
@@ -498,26 +463,59 @@ class BotPlayer extends Player {
   }
 
   void _executeMovement(double dt) {
-    if (targetPosition == null) return;
+    if (targetPosition == null) {
+      // No target, idle with occasional micro-adjustments for realism
+      if (_random.nextDouble() < 0.02) {
+        velocity = Vector2.zero();
+      }
+      return;
+    }
     
-    // Calculate direction to target
-    final targetPixelPos = Vector2(
-      targetPosition!.x * tileSize + tileSize * 0.1,
-      targetPosition!.y * tileSize + tileSize * 0.1,
-    );
+    // Calculate direction to target (grid-based movement)
+    final currentGridX = gridPosition.x.toInt();
+    final currentGridY = gridPosition.y.toInt();
+    final targetGridX = targetPosition!.x.toInt();
+    final targetGridY = targetPosition!.y.toInt();
     
-    final direction = targetPixelPos - position;
-    
-    // If close enough to target, pick new target
-    if (direction.length < tileSize * 0.3) {
+    // Already at target grid position
+    if (currentGridX == targetGridX && currentGridY == targetGridY) {
       targetPosition = null;
       velocity = Vector2.zero();
       return;
     }
     
-    // Move towards target
-    direction.normalize();
-    velocity = direction * Player.moveSpeed;
+    // Calculate pixel positions
+    final currentPixelPos = Vector2(
+      currentGridX * tileSize + tileSize / 2,
+      currentGridY * tileSize + tileSize / 2,
+    );
+    final targetPixelPos = Vector2(
+      targetGridX * tileSize + tileSize / 2,
+      targetGridY * tileSize + tileSize / 2,
+    );
+    
+    final direction = targetPixelPos - currentPixelPos;
+    
+    // Close enough to snap to grid
+    if (direction.length < tileSize * 0.4) {
+      targetPosition = null;
+      velocity = Vector2.zero();
+      return;
+    }
+    
+    // Move in one direction at a time (more natural grid movement)
+    if (direction.x.abs() > direction.y.abs()) {
+      // Move horizontally
+      velocity = Vector2(direction.x > 0 ? Player.moveSpeed : -Player.moveSpeed, 0);
+    } else {
+      // Move vertically
+      velocity = Vector2(0, direction.y > 0 ? Player.moveSpeed : -Player.moveSpeed);
+    }
+    
+    // Hard difficulty: Move faster when hunting
+    if (isHunting) {
+      velocity *= 1.1;
+    }
   }
 
   void _strategicBombPlacement() {
@@ -531,102 +529,112 @@ class BotPlayer extends Player {
     int destructiblesInRange = 0;
     int enemiesInRange = 0;
     bool hasEscapeRoute = false;
+    int escapeRoutes = 0;
     
-    // Count destructibles in blast radius
-    for (int i = 1; i <= explosionRadius; i++) {
-      // Check all 4 directions
-      final positions = [
-        Vector2((currentX + i).toDouble(), currentY.toDouble()),
-        Vector2((currentX - i).toDouble(), currentY.toDouble()),
-        Vector2(currentX.toDouble(), (currentY + i).toDouble()),
-        Vector2(currentX.toDouble(), (currentY - i).toDouble()),
-      ];
-      
-      for (final pos in positions) {
+    // Count destructibles in blast radius (with wall blocking)
+    final directions = [
+      Vector2(1, 0), Vector2(-1, 0), Vector2(0, 1), Vector2(0, -1),
+    ];
+    
+    for (final dir in directions) {
+      for (int i = 1; i <= explosionRadius; i++) {
+        final pos = Vector2(currentX.toDouble(), currentY.toDouble()) + (dir * i.toDouble());
         final x = pos.x.toInt();
         final y = pos.y.toInt();
         
-        if (x >= 0 && x < gridWidth && y >= 0 && y < gridHeight) {
-          if (gameMap[y][x] == TileType.destructible) {
-            destructiblesInRange++;
+        if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight) break;
+        
+        if (gameMap[y][x] == TileType.destructible) {
+          destructiblesInRange++;
+          break; // Wall blocks further blast
+        } else if (gameMap[y][x] != TileType.empty) {
+          break; // Solid wall blocks
+        }
+      }
+    }
+    
+    // Check for enemies in blast range (hard difficulty always checks)
+    final otherPlayers = getOtherPlayers?.call() ?? [];
+    for (final enemy in otherPlayers) {
+      if (enemy.playerHealth <= 0 || enemy == this) continue;
+      
+      final enemyX = enemy.gridPosition.x.toInt();
+      final enemyY = enemy.gridPosition.y.toInt();
+      
+      // Check if enemy is in cross pattern within blast radius
+      if (enemyX == currentX && (enemyY - currentY).abs() <= explosionRadius) {
+        // Verify no walls block the blast
+        bool blocked = false;
+        final start = currentY < enemyY ? currentY : enemyY;
+        final end = currentY > enemyY ? currentY : enemyY;
+        for (int y = start + 1; y < end; y++) {
+          if (gameMap[y][currentX] != TileType.empty) {
+            blocked = true;
+            break;
           }
         }
-      }
-    }
-    
-    // Check for enemies in blast range (for hard difficulty)
-    if (difficulty == BotDifficulty.hard) {
-      final otherPlayers = getOtherPlayers?.call() ?? [];
-      for (final enemy in otherPlayers) {
-        if (enemy.playerHealth <= 0 || enemy == this) continue;
-        
-        final enemyX = enemy.gridPosition.x.toInt();
-        final enemyY = enemy.gridPosition.y.toInt();
-        
-        // Check if enemy is in cross pattern
-        if ((enemyX == currentX && (enemyY - currentY).abs() <= explosionRadius) ||
-            (enemyY == currentY && (enemyX - currentX).abs() <= explosionRadius)) {
-          enemiesInRange++;
+        if (!blocked) enemiesInRange++;
+      } else if (enemyY == currentY && (enemyX - currentX).abs() <= explosionRadius) {
+        bool blocked = false;
+        final start = currentX < enemyX ? currentX : enemyX;
+        final end = currentX > enemyX ? currentX : enemyX;
+        for (int x = start + 1; x < end; x++) {
+          if (gameMap[currentY][x] != TileType.empty) {
+            blocked = true;
+            break;
+          }
         }
+        if (!blocked) enemiesInRange++;
       }
     }
     
-    // Verify escape route exists
-    final escapeDirections = [
-      Vector2(0, -1), Vector2(0, 1), Vector2(-1, 0), Vector2(1, 0),
-    ];
+    // Find ALL escape routes and pick the best one
+    Vector2? bestEscapeRoute;
+    double bestEscapeScore = 0;
     
-    for (final dir in escapeDirections) {
-      Vector2 escapePos = gridPosition;
+    for (final dir in directions) {
+      Vector2? escapePos;
       bool canEscape = true;
+      double escapeScore = 0;
       
-      // Check if we can move at least 2 tiles in this direction
-      for (int i = 1; i <= explosionRadius + 1; i++) {
-        escapePos = gridPosition + (dir * i.toDouble());
-        if (!_isValidPosition(escapePos, gameMap)) {
+      // Check if we can move beyond blast range in this direction
+      for (int i = 1; i <= explosionRadius + 2; i++) {
+        final testPos = gridPosition + (dir * i.toDouble());
+        if (!_isValidPosition(testPos, gameMap)) {
           canEscape = false;
           break;
         }
+        if (i > explosionRadius) {
+          escapePos = testPos;
+          // Score based on openness
+          escapeScore = _evaluatePositionStrength(testPos, gameMap);
+        }
       }
       
-      if (canEscape) {
-        hasEscapeRoute = true;
-        bombEscapeRoute = escapePos;
-        break;
+      if (canEscape && escapePos != null) {
+        escapeRoutes++;
+        if (escapeScore > bestEscapeScore) {
+          bestEscapeScore = escapeScore;
+          bestEscapeRoute = escapePos;
+          hasEscapeRoute = true;
+        }
       }
     }
     
-    // Decision logic based on difficulty
+    // Decision logic - Hard difficulty: Aggressive placement, willing to take risks
     bool shouldPlaceBomb = false;
     
-    switch (difficulty) {
-      case BotDifficulty.easy:
-        // Only place if there are walls AND escape route
-        shouldPlaceBomb = destructiblesInRange >= 1 && 
-                         hasEscapeRoute && 
-                         _random.nextDouble() < 0.4;
-        break;
-        
-      case BotDifficulty.medium:
-        // Place if strategic AND escape exists
-        shouldPlaceBomb = (destructiblesInRange >= 1 || enemiesInRange >= 1) && 
-                         hasEscapeRoute && 
-                         _random.nextDouble() < 0.7;
-        break;
-        
-      case BotDifficulty.hard:
-        // Aggressive: place if ANY advantage exists
-        shouldPlaceBomb = ((destructiblesInRange >= 1 || enemiesInRange >= 1) && hasEscapeRoute) ||
-                         (enemiesInRange >= 1 && _random.nextDouble() < 0.5); // Risk it for enemy trap
-        break;
-    }
+    shouldPlaceBomb = (destructiblesInRange >= 1 && hasEscapeRoute) ||
+                     (enemiesInRange >= 1 && (hasEscapeRoute || _random.nextDouble() < 0.3)) || // Risky trap
+                     (destructiblesInRange >= 2 && escapeRoutes >= 1); // Multi-wall break
     
     if (shouldPlaceBomb) {
       onBombPlaceRequest?.call();
       
       // Immediately start escaping if we placed a bomb
-      if (bombEscapeRoute != null) {
-        targetPosition = bombEscapeRoute;
+      if (bestEscapeRoute != null) {
+        targetPosition = bestEscapeRoute;
+        bombEscapeRoute = bestEscapeRoute;
         isRunningFromBomb = true;
       }
     }
