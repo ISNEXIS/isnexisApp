@@ -6,9 +6,11 @@ import 'package:flutter/services.dart';
 
 import 'game/bomb_game.dart';
 import 'game/components/player.dart';
+import 'models/player_selection_data.dart';
 import 'screens/game_over_screen.dart';
 import 'screens/game_screen.dart';
 import 'screens/main_menu.dart';
+import 'screens/multiplayer_lobby_screen.dart';
 import 'screens/multiplayer_setup_screen.dart';
 import 'screens/player_selection_screen.dart';
 import 'screens/settings_screen.dart';
@@ -44,9 +46,9 @@ class _IsnexisState extends State<Isnexis> {
   bool showGame = false;
   bool showGameOver = false;
   bool showWinning = false;
-  bool showPlayerSelection = false;
+  bool showSinglePlayerSelection = false;
+  bool showMultiplayerLobby = false;
   bool showMultiplayerSetup = false;
-  bool _playerSelectionForMultiplayer = false;
   MultiplayerSetupResult? _pendingMultiplayerConfig;
   GameHubClient? _activeHubClient;
   late BombGame gameInstance;
@@ -95,46 +97,49 @@ class _IsnexisState extends State<Isnexis> {
               onCancel: () {
                 setState(() {
                   showMultiplayerSetup = false;
-                  _playerSelectionForMultiplayer = false;
                   _pendingMultiplayerConfig = null;
                 });
               },
             );
-          } else if (showPlayerSelection) {
+          } else if (showSinglePlayerSelection) {
             return PlayerSelectionScreen(
               onBack: () {
                 setState(() {
-                  showPlayerSelection = false;
-                  if (_playerSelectionForMultiplayer) {
-                    showMultiplayerSetup = true;
-                  }
+                  showSinglePlayerSelection = false;
                 });
               },
               onStartGame: (selectedPlayers) {
-                _startNewGame(selectedPlayers);
+                _startNewGame(selectedPlayers, isMultiplayer: false);
               },
-              startButtonLabel: _playerSelectionForMultiplayer
-                  ? 'JOIN MATCH'
-                  : 'START GAME',
-              multiplayerCode: _playerSelectionForMultiplayer
-                  ? _pendingMultiplayerConfig?.joinCode
-                  : null,
+            );
+          } else if (showMultiplayerLobby) {
+            return MultiplayerLobbyScreen(
+              onBack: () {
+                setState(() {
+                  showMultiplayerLobby = false;
+                  showMultiplayerSetup = true;
+                });
+              },
+              onStartGame: (selectedPlayers) {
+                _startNewGame(selectedPlayers, isMultiplayer: true);
+              },
+              joinCode: _pendingMultiplayerConfig?.joinCode,
             );
           } else {
             return MainMenu(
               onStart: () {
                 setState(() {
-                  showPlayerSelection = true;
+                  showSinglePlayerSelection = true;
                   showMultiplayerSetup = false;
-                  _playerSelectionForMultiplayer = false;
+                  showMultiplayerLobby = false;
                   _pendingMultiplayerConfig = null;
                 });
               },
               onMultiplayer: () {
                 setState(() {
-                  showPlayerSelection = false;
+                  showSinglePlayerSelection = false;
+                  showMultiplayerLobby = false;
                   showMultiplayerSetup = true;
-                  _playerSelectionForMultiplayer = true;
                 });
               },
               onSettings: () => _showSettings(context),
@@ -146,13 +151,13 @@ class _IsnexisState extends State<Isnexis> {
     );
   }
 
-  void _startNewGame(List<PlayerSelectionData> selectedPlayers) {
+  void _startNewGame(List<PlayerSelectionData> selectedPlayers, {required bool isMultiplayer}) {
     GameHubClient? hubClient;
     int? roomId;
     int? playerId;
     final pendingConfig = _pendingMultiplayerConfig;
 
-    if (_playerSelectionForMultiplayer && pendingConfig != null) {
+    if (isMultiplayer && pendingConfig != null) {
       _activeHubClient?.dispose();
       hubClient = GameHubClient(baseUrl: pendingConfig.baseUrl);
       roomId = pendingConfig.roomId;
@@ -190,7 +195,8 @@ class _IsnexisState extends State<Isnexis> {
       showGame = true;
       showGameOver = false;
       showWinning = false;
-      showPlayerSelection = false;
+      showSinglePlayerSelection = false;
+      showMultiplayerLobby = false;
       showMultiplayerSetup = false;
     });
 
@@ -206,7 +212,6 @@ class _IsnexisState extends State<Isnexis> {
     }
 
     _pendingMultiplayerConfig = null;
-    _playerSelectionForMultiplayer = false;
   }
 
   void _restartGame() {
@@ -222,9 +227,9 @@ class _IsnexisState extends State<Isnexis> {
       showGame = false;
       showGameOver = false;
       showWinning = false;
-      showPlayerSelection = false;
+      showSinglePlayerSelection = false;
+      showMultiplayerLobby = false;
       showMultiplayerSetup = false;
-      _playerSelectionForMultiplayer = false;
     });
 
     final client = _activeHubClient;
@@ -276,8 +281,7 @@ class _IsnexisState extends State<Isnexis> {
     setState(() {
       _pendingMultiplayerConfig = result;
       showMultiplayerSetup = false;
-      showPlayerSelection = true;
-      _playerSelectionForMultiplayer = true;
+      showMultiplayerLobby = true;
     });
   }
 

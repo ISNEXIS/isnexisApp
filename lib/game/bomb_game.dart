@@ -8,7 +8,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:isnexis_app/services/game_hub_client.dart';
 
-import '../screens/player_selection_screen.dart';
+import '../models/player_selection_data.dart';
 // Component imports
 import 'components/bomb.dart';
 import 'components/bot_player.dart';
