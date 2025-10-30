@@ -22,7 +22,7 @@ class PlayerSelectionScreen extends StatefulWidget {
 }
 
 class _PlayerSelectionScreenState extends State<PlayerSelectionScreen> {
-  int numberOfPlayers = 1;
+  int numberOfPlayers = 2; // Minimum 2 players (1 human + 1 bot)
   final List<PlayerSelectionData?> selectedPlayers = [null, null, null, null];
 
   @override
@@ -141,8 +141,8 @@ class _PlayerSelectionScreenState extends State<PlayerSelectionScreen> {
                     const SizedBox(height: 10),
                     Row(
                       mainAxisAlignment: MainAxisAlignment.center,
-                      children: List.generate(4, (index) {
-                        final playerCount = index + 1;
+                      children: List.generate(3, (index) {
+                        final playerCount = index + 2; // Start from 2 (2, 3, 4)
                         final isSelected = numberOfPlayers == playerCount;
                         return Padding(
                           padding: const EdgeInsets.symmetric(horizontal: 8.0),
@@ -192,6 +192,7 @@ class _PlayerSelectionScreenState extends State<PlayerSelectionScreen> {
                     return _PlayerCharacterSelector(
                       playerNumber: playerIndex + 1,
                       selectedPlayer: selectedPlayers[playerIndex],
+                      isHuman: playerIndex == 0, // Only first player is human
                       onPlayerSelected: (playerData) {
                         setState(() {
                           selectedPlayers[playerIndex] = playerData;
@@ -265,11 +266,13 @@ class _PlayerSelectionScreenState extends State<PlayerSelectionScreen> {
 class _PlayerCharacterSelector extends StatefulWidget {
   final int playerNumber;
   final PlayerSelectionData? selectedPlayer;
+  final bool isHuman; // Whether this player slot is for human or bot
   final Function(PlayerSelectionData) onPlayerSelected;
 
   const _PlayerCharacterSelector({
     required this.playerNumber,
     required this.selectedPlayer,
+    required this.isHuman,
     required this.onPlayerSelected,
   });
 
@@ -278,18 +281,9 @@ class _PlayerCharacterSelector extends StatefulWidget {
 }
 
 class _PlayerCharacterSelectorState extends State<_PlayerCharacterSelector> {
-  bool isBot = false;
-
-  @override
-  void initState() {
-    super.initState();
-    if (widget.selectedPlayer != null) {
-      isBot = widget.selectedPlayer!.isBot;
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
+    final isBot = !widget.isHuman; // Bot if not human
     return Container(
       margin: const EdgeInsets.only(bottom: 16.0),
       padding: const EdgeInsets.all(16.0),
@@ -313,33 +307,20 @@ class _PlayerCharacterSelectorState extends State<_PlayerCharacterSelector> {
                 ),
               ),
               const SizedBox(width: 16),
-              // Bot toggle
-              GestureDetector(
-                onTap: () {
-                  setState(() {
-                    isBot = !isBot;
-                    if (widget.selectedPlayer != null) {
-                      widget.onPlayerSelected(PlayerSelectionData(
-                        character: widget.selectedPlayer!.character,
-                        isBot: isBot,
-                      ));
-                    }
-                  });
-                },
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                  decoration: BoxDecoration(
-                    color: isBot ? const Color(0xFFFF6B35) : const Color(0xFF306230),
-                    border: Border.all(color: const Color(0xFF9BBC0F), width: 2),
-                  ),
-                  child: Text(
-                    isBot ? '🤖 BOT' : '👤 HUMAN',
-                    style: const TextStyle(
-                      fontSize: 12,
-                      fontFamily: 'Courier',
-                      fontWeight: FontWeight.bold,
-                      color: Color(0xFF9BBC0F),
-                    ),
+              // Display player type (non-interactive)
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                decoration: BoxDecoration(
+                  color: isBot ? const Color(0xFFFF6B35) : const Color(0xFF306230),
+                  border: Border.all(color: const Color(0xFF9BBC0F), width: 2),
+                ),
+                child: Text(
+                  isBot ? '🤖 BOT' : '👤 HUMAN',
+                  style: const TextStyle(
+                    fontSize: 12,
+                    fontFamily: 'Courier',
+                    fontWeight: FontWeight.bold,
+                    color: Color(0xFF9BBC0F),
                   ),
                 ),
               ),

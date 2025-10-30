@@ -211,11 +211,12 @@ class _IsnexisState extends State<Isnexis> {
                 print('Game ended. Dead player viewing winner screen. Winner is P${gameInstance.winnerPlayerNumber}');
               }
             } else {
-              // Single player: Show game over or winning as before
+              // Single player: Show winning screen if player survived, game over if died
               if (winner != null && winner.playerHealth > 0) {
                 showWinning = true;
                 showGameOver = false;
               } else {
+                // Player died - show game over screen
                 showGameOver = true;
                 showWinning = false;
               }

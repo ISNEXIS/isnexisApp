@@ -1715,12 +1715,15 @@ class BombGame extends FlameGame
         onGameStateChanged(true, winner: winner);
       }
     } else {
-      // Single player: Find the winner from local players
-      winner = players.firstWhere(
-        (player) => player.playerHealth > 0,
-        orElse: () => players.first, // Fallback if all died simultaneously
-      );
-      onGameStateChanged(true, winner: winner); // Notify that game is over with winner
+      // Single player: Check if player is alive or dead
+      if (players.isNotEmpty && players.first.playerHealth > 0) {
+        // Player is alive and won (all bots defeated or game completed)
+        winner = players.first;
+      } else {
+        // Player died - no winner, show game over
+        winner = null;
+      }
+      onGameStateChanged(true, winner: winner); // Notify that game is over
     }
   }
 
