@@ -1,5 +1,9 @@
 import 'dart:async';
+import 'dart:ui' as ui;
 
+import 'package:flame/extensions.dart';
+import 'package:flame/sprite.dart';
+import 'package:flame/widgets.dart';
 import 'package:flutter/material.dart';
 
 import '../game/components/player_character.dart';
@@ -31,6 +35,12 @@ class MultiplayerLobbyScreen extends StatefulWidget {
 }
 
 class _MultiplayerLobbyScreenState extends State<MultiplayerLobbyScreen> {
+  static const int _previewFrameIndex = 10;
+  static const double _spriteFramePixels = 16;
+  static final ui.Paint _previewPaint =
+      ui.Paint()..filterQuality = ui.FilterQuality.none;
+  static final Map<PlayerCharacter, Future<Sprite>> _spriteFutures = {};
+
   PlayerCharacter selectedCharacter = PlayerCharacter.character1;
   final List<Map<String, dynamic>> lobbyPlayers = [];
   final Map<int, PlayerCharacter> playerCharacters = {}; // Store character selections locally
@@ -43,6 +53,59 @@ class _MultiplayerLobbyScreenState extends State<MultiplayerLobbyScreen> {
   StreamSubscription? _characterSelectedSubscription;
   StreamSubscription? _gameStartSubscription;
   bool _isConnecting = true;
+
+  Future<Sprite> _getSprite(PlayerCharacter character) {
+    return _spriteFutures.putIfAbsent(character, () {
+      final spritePath = character.animatedSpritePath ??
+          character.spritePath.replaceFirst('assets/images/', '');
+      return Sprite.load(
+        spritePath,
+        srcPosition: Vector2(_spriteFramePixels * _previewFrameIndex, 0),
+        srcSize: Vector2.all(_spriteFramePixels),
+      );
+    });
+  }
+
+  Widget _buildCharacterPreview(
+    PlayerCharacter character, {
+    Color borderColor = Colors.black,
+    double borderWidth = 2,
+    double size = 40,
+  }) {
+    return Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        color: character.fallbackColor,
+        border: Border.all(color: borderColor, width: borderWidth),
+      ),
+      child: FutureBuilder<Sprite>(
+        future: _getSprite(character),
+        builder: (context, snapshot) {
+          if (snapshot.hasData) {
+            return FittedBox(
+              fit: BoxFit.contain,
+              alignment: Alignment.center,
+              child: SizedBox(
+                width: _spriteFramePixels,
+                height: _spriteFramePixels,
+                child: SpriteWidget(
+                  sprite: snapshot.data!,
+                  paint: _previewPaint,
+                ),
+              ),
+            );
+          }
+          if (snapshot.hasError) {
+            debugPrint(
+              'Failed to load lobby preview for $character: ${snapshot.error}',
+            );
+          }
+          return const SizedBox.expand();
+        },
+      ),
+    );
+  }
 
   @override
   void initState() {
@@ -581,13 +644,11 @@ class _MultiplayerLobbyScreenState extends State<MultiplayerLobbyScreen> {
                               ),
                               child: Column(
                                 children: [
-                                  Container(
-                                    width: 40,
-                                    height: 40,
-                                    decoration: BoxDecoration(
-                                      color: character.fallbackColor,
-                                      border: Border.all(color: Colors.black, width: 2),
-                                    ),
+                                  _buildCharacterPreview(
+                                    character,
+                                    borderColor: Colors.black,
+                                    borderWidth: 2,
+                                    size: 40,
                                   ),
                                   const SizedBox(height: 4),
                                   Text(
@@ -703,13 +764,11 @@ class _MultiplayerLobbyScreenState extends State<MultiplayerLobbyScreen> {
                               ),
                               child: Row(
                                 children: [
-                                  Container(
-                                    width: 40,
-                                    height: 40,
-                                    decoration: BoxDecoration(
-                                      color: (player['character'] as PlayerCharacter).fallbackColor,
-                                      border: Border.all(color: Colors.black, width: 2),
-                                    ),
+                                  _buildCharacterPreview(
+                                    player['character'] as PlayerCharacter,
+                                    borderColor: Colors.black,
+                                    borderWidth: 2,
+                                    size: 40,
                                   ),
                                   const SizedBox(width: 12),
                                   Expanded(

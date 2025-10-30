@@ -1,3 +1,8 @@
+import 'dart:ui' as ui;
+
+import 'package:flame/extensions.dart';
+import 'package:flame/widgets.dart';
+import 'package:flame/sprite.dart';
 import 'package:flutter/material.dart';
 
 import '../game/components/player_character.dart';
@@ -281,6 +286,65 @@ class _PlayerCharacterSelector extends StatefulWidget {
 }
 
 class _PlayerCharacterSelectorState extends State<_PlayerCharacterSelector> {
+  // Frame index for the idle pose (matches Player component usage).
+  static const int _previewFrameIndex = 10;
+  static const double _spriteFramePixels = 16;
+  static final ui.Paint _previewPaint =
+      ui.Paint()..filterQuality = ui.FilterQuality.none;
+  static final Map<PlayerCharacter, Future<Sprite>> _spriteFutures = {};
+
+  Future<Sprite> _getSprite(PlayerCharacter character) {
+    return _spriteFutures.putIfAbsent(character, () {
+      final spritePath = character.animatedSpritePath ??
+          character.spritePath.replaceFirst('assets/images/', '');
+      return Sprite.load(
+        spritePath,
+        srcPosition: Vector2(_spriteFramePixels * _previewFrameIndex, 0),
+        srcSize: Vector2.all(_spriteFramePixels),
+      );
+    });
+  }
+
+  Widget _buildCharacterPreview(
+    PlayerCharacter character,
+    bool isSelected,
+  ) {
+    final borderColor = isSelected ? Colors.black : const Color(0xFF9BBC0F);
+    return Container(
+      width: 50,
+      height: 50,
+      decoration: BoxDecoration(
+        color: character.fallbackColor,
+        border: Border.all(
+          color: borderColor,
+          width: 2,
+        ),
+      ),
+      child: FutureBuilder<Sprite>(
+        future: _getSprite(character),
+        builder: (context, snapshot) {
+          if (snapshot.hasData) {
+            return FittedBox(
+              fit: BoxFit.contain,
+              child: SizedBox(
+                width: _spriteFramePixels,
+                height: _spriteFramePixels,
+                child: SpriteWidget(
+                  sprite: snapshot.data!,
+                  paint: _previewPaint,
+                ),
+              ),
+            );
+          }
+          if (snapshot.hasError) {
+            debugPrint('Failed to load preview for $character: ${snapshot.error}');
+          }
+          return const SizedBox.expand();
+        },
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final isBot = !widget.isHuman; // Bot if not human
@@ -357,25 +421,8 @@ class _PlayerCharacterSelectorState extends State<_PlayerCharacterSelector> {
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      // Character preview (colored square as fallback)
-                      Container(
-                        width: 50,
-                        height: 50,
-                        decoration: BoxDecoration(
-                          color: character.fallbackColor,
-                          border: Border.all(
-                            color: isSelected ? Colors.black : const Color(0xFF9BBC0F),
-                            width: 2,
-                          ),
-                        ),
-                        child: character == PlayerCharacter.character1
-                            ? Icon(
-                                Icons.person,
-                                color: isSelected ? Colors.black : Colors.white,
-                                size: 30,
-                              )
-                            : null,
-                      ),
+                      // Character preview (static still frame from sprite sheet)
+                      _buildCharacterPreview(character, isSelected),
                       const SizedBox(height: 8),
                       Text(
                         character.displayName.toUpperCase(),
