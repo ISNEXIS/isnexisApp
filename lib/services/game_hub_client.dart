@@ -498,7 +498,8 @@ class GameHubClient {
     }
 
     final playerId = _toInt(map['playerId']);
-    final name = map['displayName']?.toString();
+    // Prioritize playerName from backend, fallback to displayName
+    final name = map['playerName']?.toString() ?? map['displayName']?.toString();
     if (playerId == null || name == null || name.isEmpty) {
       return null;
     }

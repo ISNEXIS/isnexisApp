@@ -642,14 +642,21 @@ class BombGame extends FlameGame
     }
 
     print('Received gameEnded event from server');
-    print('Event data: winnerId=${event.winnerId}, winnerName=${event.winnerName}, winnerRoomPosition=${event.winnerRoomPosition}');
+    print('=== GAME ENDED EVENT FROM BACKEND ===');
+    print('  winnerId: ${event.winnerId}');
+    print('  winnerName: "${event.winnerName}"');
+    print('  winnerRoomPosition: ${event.winnerRoomPosition}');
+    print('  Current _playerNames map: $_playerNames');
     isGameOver = true;
     
     // Use winner data from backend if available
     if (event.winnerRoomPosition != null) {
       _winnerPlayerNumber = event.winnerRoomPosition;
       _winnerNameFromBackend = event.winnerName; // Store name from backend
-      print('✓ Using winner data from backend: P${event.winnerRoomPosition} - ${event.winnerName ?? "Unknown"}');
+      print('✓ Using winner data from backend:');
+      print('  - Winner room position: P${event.winnerRoomPosition}');
+      print('  - Winner name from backend: "${event.winnerName}"');
+      print('  - Stored as _winnerNameFromBackend: "$_winnerNameFromBackend"');
     } else {
       // Fallback: Find the winner - the player NOT in the dead set
       print('=== GAME ENDED - FINDING WINNER FOR DEAD PLAYER ===');
@@ -798,12 +805,13 @@ class BombGame extends FlameGame
     
     final desiredIds = <int>{};
     for (final summary in roster) {
-      print('Processing roster entry: ${summary.playerId} - ${summary.displayName}');
+      print('Processing roster entry: playerId=${summary.playerId}, displayName="${summary.displayName}"');
       if (summary.playerId == networkPlayerId) {
         print('  -> Skipping (this is me)');
         continue;
       }
       _playerNames[summary.playerId] = summary.displayName;
+      print('  -> Stored player name: $_playerNames[${summary.playerId}] = "${summary.displayName}"');
       desiredIds.add(summary.playerId);
       _ensureRemotePlayer(summary);
     }
@@ -828,6 +836,8 @@ class BombGame extends FlameGame
       return;
     }
     _playerNames[summary.playerId] = summary.displayName;
+    print('Remote player joined: playerId=${summary.playerId}, playerName="${summary.displayName}"');
+    print('  -> Stored in _playerNames: ${_playerNames[summary.playerId]}');
     _ensureRemotePlayer(summary);
     notifyListeners();
   }
@@ -1612,11 +1622,24 @@ class BombGame extends FlameGame
 
         // Check if player is on the same grid position as powerup
         if (playerGridX == powerupGridX && playerGridY == powerupGridY) {
-          // Apply powerup to player with standard +1 bonus
+          // Apply powerup to player with standard +1 bonus (both single and multiplayer)
           final multiplier = 1;
+          
+          // Log current stats before applying
+          print('=== POWERUP COLLECTION ===');
+          print('Type: ${powerup.type.name}');
+          print('Multiplier: $multiplier (should always be 1)');
+          print('Player health BEFORE: ${player.playerHealth}');
+          print('Player maxBombs BEFORE: ${player.maxBombs}');
+          print('Player explosionRadius BEFORE: ${player.explosionRadius}');
+          
           powerup.applyToPlayer(player, multiplier: multiplier);
           
-          print('Powerup collected: ${powerup.type.name} (+$multiplier) by player');
+          print('Player health AFTER: ${player.playerHealth}');
+          print('Player maxBombs AFTER: ${player.maxBombs}');
+          print('Player explosionRadius AFTER: ${player.explosionRadius}');
+          print('Network enabled: $_networkEnabled');
+          print('=========================');
           
           // Broadcast powerup collection in multiplayer
           if (_networkJoined && networkClient != null && networkRoomId != null && networkPlayerId != null) {
@@ -1670,7 +1693,9 @@ class BombGame extends FlameGame
         print('✓ Winner is local player (P$_winnerPlayerNumber)');
         print('  Network Player ID: $networkPlayerId');
         print('  Player Number (room position): ${players.first.playerNumber}');
-        print('  Winner Name: $_winnerNameFromBackend');
+        print('  Local Player Name: $localPlayerName');
+        print('  Player name from _playerNames[networkPlayerId]: ${_playerNames[networkPlayerId]}');
+        print('  Final Winner Name (_winnerNameFromBackend): $_winnerNameFromBackend');
         
         // Send winner data to backend
         if (_winnerPlayerNumber != null && networkPlayerId != null) {
@@ -1701,9 +1726,11 @@ class BombGame extends FlameGame
           _winnerPlayerNumber = winnerRoomPos;
           final winnerName = _playerNames[winnerPlayerId] ?? 'Player $winnerRoomPos';
           _winnerNameFromBackend = winnerName; // Store the name
-          print('✓ Winner is remote player $winnerPlayerId (P$winnerRoomPos - $winnerName)');
-          print('  playerIdToRoomPosition: $_playerIdToRoomPosition');
-          print('  playerNames: $_playerNames');
+          print('✓ Winner is remote player $winnerPlayerId (P$winnerRoomPos)');
+          print('  Winner name from _playerNames[$winnerPlayerId]: ${_playerNames[winnerPlayerId]}');
+          print('  Final winner name (_winnerNameFromBackend): $_winnerNameFromBackend');
+          print('  All playerIdToRoomPosition: $_playerIdToRoomPosition');
+          print('  All playerNames: $_playerNames');
           // winner stays null for dead players, will use _winnerPlayerNumber in main.dart
         } else {
           print('⚠ Warning: Could not determine winner!');
