@@ -13,7 +13,6 @@ import 'screens/main_menu.dart';
 import 'screens/multiplayer_lobby_screen.dart';
 import 'screens/multiplayer_setup_screen.dart';
 import 'screens/player_selection_screen.dart';
-import 'screens/settings_screen.dart';
 import 'screens/winning_screen.dart';
 import 'services/game_hub_client.dart';
 
@@ -163,7 +162,6 @@ class _IsnexisState extends State<Isnexis> {
                   showMultiplayerSetup = true;
                 });
               },
-              onSettings: () => _showSettings(context),
               onExit: () => _exitGame(context),
             );
           }
@@ -309,13 +307,6 @@ class _IsnexisState extends State<Isnexis> {
     }
     
     _pendingMultiplayerConfig = null;
-  }
-
-  void _showSettings(BuildContext context) {
-    Navigator.push(
-      context,
-      MaterialPageRoute(builder: (context) => const SettingsScreen()),
-    );
   }
 
   void _exitGame(BuildContext context) {
