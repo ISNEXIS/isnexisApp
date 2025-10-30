@@ -1,14 +1,14 @@
 import 'package:flutter/material.dart';
 
 class WinningScreen extends StatelessWidget {
-  final VoidCallback onPlayAgain;
+  final VoidCallback? onPlayAgain;
   final VoidCallback onMainMenu;
   final String? winnerName;
   final int playerNumber;
 
   const WinningScreen({
     super.key,
-    required this.onPlayAgain,
+    this.onPlayAgain,
     required this.onMainMenu,
     this.winnerName,
     this.playerNumber = 1,
@@ -147,25 +147,13 @@ class WinningScreen extends StatelessWidget {
               
               const SizedBox(height: 50),
               
-              // Action Buttons
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  // Play Again Button
-                  _buildRetroButton(
-                    label: '▶ PLAY AGAIN',
-                    color: const Color(0xFF9BBC0F),
-                    onPressed: onPlayAgain,
-                  ),
-                  const SizedBox(width: 30),
-                  
-                  // Main Menu Button
-                  _buildRetroButton(
-                    label: '⌂ MAIN MENU',
-                    color: const Color(0xFF306230),
-                    onPressed: onMainMenu,
-                  ),
-                ],
+              // Action Buttons - Only Main Menu
+              Center(
+                child: _buildRetroButton(
+                  label: '⌂ MAIN MENU',
+                  color: const Color(0xFF306230),
+                  onPressed: onMainMenu,
+                ),
               ),
             ],
           ),

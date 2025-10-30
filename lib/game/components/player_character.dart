@@ -65,4 +65,18 @@ extension PlayerCharacterExtension on PlayerCharacter {
         return 'Character 4';
     }
   }
+
+  /// Get the bomb sprite path for this character
+  String get bombSpritePath {
+    switch (this) {
+      case PlayerCharacter.character1:
+        return 'bombs/bomb_character1.png';
+      case PlayerCharacter.character2:
+        return 'bombs/bomb_character2.png';
+      case PlayerCharacter.character3:
+        return 'bombs/bomb_character3.png';
+      case PlayerCharacter.character4:
+        return 'bombs/bomb_character4.png';
+    }
+  }
 }

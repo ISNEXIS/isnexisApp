@@ -13,6 +13,7 @@ class Powerup extends PositionComponent {
   final PowerupType type;
   final Vector2 gridPosition;
   final double tileSize;
+  final int id; // Unique ID for network synchronization
   bool collected = false;
   
   SpriteComponent? spriteComponent;
@@ -22,6 +23,7 @@ class Powerup extends PositionComponent {
     required this.type,
     required this.gridPosition,
     required this.tileSize,
+    required this.id,
   }) : super(
          position: Vector2(
            gridPosition.x * tileSize + tileSize * 0.2,

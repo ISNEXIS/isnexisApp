@@ -11,6 +11,7 @@ class Bomb extends PositionComponent {
   final PlayerCharacter? ownerCharacter; // Which character placed this bomb
   final Player? ownerPlayer; // Reference to player who placed this bomb
   final Color fallbackColor; // Fallback color if no sprite
+  final bool isRemote; // If true, this bomb was placed by another player and shouldn't auto-explode
   double timer = 3.0; // 3 seconds until explosion
 
   // Components for rendering
@@ -24,6 +25,7 @@ class Bomb extends PositionComponent {
     this.ownerCharacter,
     this.ownerPlayer,
     this.fallbackColor = Colors.black,
+    this.isRemote = false,
   }) : super(
          position: Vector2(
            gridPosition.x * tileSize + tileSize / 2,
@@ -39,13 +41,10 @@ class Bomb extends PositionComponent {
 
     // Try to load character-specific bomb sprite, fall back to generic, then circle
     try {
-      String spritePath;
-
       if (ownerCharacter != null) {
-        // Try character-specific bomb sprite first
-        spritePath = 'bombs/bomb_${ownerCharacter!.name}.png';
+        // Try character-specific bomb sprite using the bombSpritePath property
         try {
-          final sprite = await Sprite.load(spritePath);
+          final sprite = await Sprite.load(ownerCharacter!.bombSpritePath);
           spriteComponent = SpriteComponent(sprite: sprite, size: size);
           add(spriteComponent!);
           return;
@@ -71,7 +70,11 @@ class Bomb extends PositionComponent {
   @override
   void update(double dt) {
     super.update(dt);
-    timer -= dt;
+    
+    // Remote bombs don't count down - they wait for server explosion event
+    if (!isRemote) {
+      timer -= dt;
+    }
 
     // Flash effect as timer gets lower
     if (timer < 1.0) {
@@ -89,7 +92,8 @@ class Bomb extends PositionComponent {
       }
     }
 
-    if (timer <= 0) {
+    // Only local bombs explode on their own timer
+    if (!isRemote && timer <= 0) {
       onExplode(this);
     }
   }

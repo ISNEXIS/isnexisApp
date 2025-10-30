@@ -37,6 +37,7 @@ class _MultiplayerLobbyScreenState extends State<MultiplayerLobbyScreen> {
   StreamSubscription? _rosterSubscription;
   StreamSubscription? _playerJoinedSubscription;
   StreamSubscription? _playerLeftSubscription;
+  StreamSubscription? _playerDisconnectedSubscription;
   StreamSubscription? _playerMovementSubscription;
   StreamSubscription? _characterSelectedSubscription;
   StreamSubscription? _gameStartSubscription;
@@ -141,10 +142,24 @@ class _MultiplayerLobbyScreenState extends State<MultiplayerLobbyScreen> {
           print('Player left: ${player.displayName} (ID: ${player.playerId})');
           setState(() {
             lobbyPlayers.removeWhere((p) => p['playerId'] == player.playerId);
+            playerCharacters.remove(player.playerId);
             print('Removed player from lobby. Total players: ${lobbyPlayers.length}');
           });
         }, onError: (error) {
           print('ERROR in playerLeftStream: $error');
+        });
+        
+        // Listen for player disconnections
+        _playerDisconnectedSubscription = hubClient.playerDisconnectedStream.listen((player) {
+          print('>>> PLAYER DISCONNECTED EVENT RECEIVED <<<');
+          print('Player disconnected: ${player.displayName} (ID: ${player.playerId})');
+          setState(() {
+            lobbyPlayers.removeWhere((p) => p['playerId'] == player.playerId);
+            playerCharacters.remove(player.playerId);
+            print('Removed disconnected player from lobby. Total players: ${lobbyPlayers.length}');
+          });
+        }, onError: (error) {
+          print('ERROR in playerDisconnectedStream: $error');
         });
         
         // Listen for game start
@@ -209,6 +224,19 @@ class _MultiplayerLobbyScreenState extends State<MultiplayerLobbyScreen> {
             // Handle game start
             else if (messageType == 'game_start') {
               final gameRoomId = payload['roomId'] as int?;
+              final playerId = payload['playerId'] as int?;
+              final characterIndex = payload['characterIndex'] as int?;
+              
+              // Extract character from game_start message if present
+              if (playerId != null && characterIndex != null) {
+                print('>>> CHARACTER from GAME_START: Player $playerId, char $characterIndex');
+                if (characterIndex >= 0 && characterIndex < PlayerCharacter.values.length) {
+                  final character = PlayerCharacter.values[characterIndex];
+                  playerCharacters[playerId] = character;
+                  print('Stored character ${character.displayName} for player $playerId');
+                }
+              }
+              
               if (gameRoomId == roomId) {
                 print('>>> GAME START via MOVEMENT EVENT <<<');
                 print('Game starting for room: $gameRoomId');
@@ -226,6 +254,15 @@ class _MultiplayerLobbyScreenState extends State<MultiplayerLobbyScreen> {
         print('Calling joinRoom($roomId, $localPlayerId)...');
         await hubClient.joinRoom(roomId, localPlayerId);
         print('joinRoom() completed successfully');
+        
+        // Send our character selection to all players
+        print('Sending character selection: ${selectedCharacter.index}');
+        await hubClient.sendPlayerMovement(roomId, {
+          'type': 'character_selection',
+          'playerId': localPlayerId,
+          'characterIndex': selectedCharacter.index,
+        });
+        print('Character selection sent');
         
         setState(() {
           _isConnecting = false;
@@ -277,6 +314,7 @@ class _MultiplayerLobbyScreenState extends State<MultiplayerLobbyScreen> {
     _rosterSubscription?.cancel();
     _playerJoinedSubscription?.cancel();
     _playerLeftSubscription?.cancel();
+    _playerDisconnectedSubscription?.cancel();
     _playerMovementSubscription?.cancel();
     _characterSelectedSubscription?.cancel();
     _gameStartSubscription?.cancel();
@@ -665,11 +703,12 @@ class _MultiplayerLobbyScreenState extends State<MultiplayerLobbyScreen> {
       try {
         print('Broadcasting game start to room $roomId...');
         
-        // WORKAROUND: Server doesn't have StartGame method, use SendPlayerMovement instead
+        // Send game start message that includes our character selection
         await hubClient.sendPlayerMovement(roomId, {
           'type': 'game_start',
           'playerId': localPlayerId,
           'roomId': roomId,
+          'characterIndex': selectedCharacter.index, // Include character in game start
         });
         
         print('Game start broadcast sent successfully via movement event');

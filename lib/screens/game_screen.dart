@@ -47,11 +47,8 @@ class _GameScreenState extends State<GameScreen> {
     final players = widget.game.players;
     final firstPlayer = players.isNotEmpty ? players.first : null;
     
-    // In multiplayer, show the player number from the actual player object
-    // In single player, show P1
-    final playerLabel = firstPlayer != null 
-        ? 'P${firstPlayer.playerNumber}' 
-        : 'P1';
+    // Show "You" for the local player
+    final playerLabel = 'You';
 
     // Get screen dimensions
     final screenSize = MediaQuery.of(context).size;
@@ -84,21 +81,22 @@ class _GameScreenState extends State<GameScreen> {
             ),
           ),
 
-          // Top Left - Pause Button
-          Positioned(
-            top: 20,
-            left: 20,
-            child: IconButton(
-              onPressed: () {
-                widget.game.paused = !widget.game.paused;
-                setState(() {});
-              },
-              icon: Icon(
-                widget.game.paused ? Icons.play_arrow : Icons.pause,
-                color: Colors.white,
-                size: 32,
-              ),
-              style: IconButton.styleFrom(
+          // Top Left - Pause Button (hidden if player is dead)
+          if (firstPlayer != null && firstPlayer.playerHealth > 0)
+            Positioned(
+              top: 20,
+              left: 20,
+              child: IconButton(
+                onPressed: () {
+                  widget.game.paused = !widget.game.paused;
+                  setState(() {});
+                },
+                icon: Icon(
+                  widget.game.paused ? Icons.play_arrow : Icons.pause,
+                  color: Colors.white,
+                  size: 32,
+                ),
+                style: IconButton.styleFrom(
                 backgroundColor: const Color(0xFF1A1A1A).withOpacity(0.9),
                 padding: const EdgeInsets.all(12),
                 side: BorderSide(
@@ -221,8 +219,8 @@ class _GameScreenState extends State<GameScreen> {
             ),
           ),
 
-          // Pause Overlay
-          if (widget.game.paused)
+          // Pause Overlay (hidden if player is dead)
+          if (widget.game.paused && firstPlayer != null && firstPlayer.playerHealth > 0)
             Container(
               color: const Color(0xFF0F380F).withOpacity(0.9),
               child: Center(
