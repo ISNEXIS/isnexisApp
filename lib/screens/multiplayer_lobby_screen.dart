@@ -703,15 +703,19 @@ class _MultiplayerLobbyScreenState extends State<MultiplayerLobbyScreen> {
       try {
         print('Broadcasting game start to room $roomId...');
         
-        // Send game start message that includes our character selection
-        await hubClient.sendPlayerMovement(roomId, {
-          'type': 'game_start',
-          'playerId': localPlayerId,
-          'roomId': roomId,
-          'characterIndex': selectedCharacter.index, // Include character in game start
-        });
+        // Build character map for all players in lobby
+        final characterMap = <String, dynamic>{};
+        for (final player in lobbyPlayers) {
+          final playerId = player['playerId'] as int;
+          final character = playerCharacters[playerId] ?? (player['character'] as PlayerCharacter);
+          characterMap[playerId.toString()] = character.index;
+          print('Player $playerId -> Character ${character.displayName} (index ${character.index})');
+        }
         
-        print('Game start broadcast sent successfully via movement event');
+        // Send game start with character data
+        await hubClient.sendGameStartWithCharacters(roomId, characterMap);
+        
+        print('Game start with characters sent successfully');
         
         // Start game locally immediately (don't wait for echo back)
         _handleGameStart();

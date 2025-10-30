@@ -84,12 +84,25 @@ class _IsnexisState extends State<Isnexis> {
                   ),
                 // Winning overlay modal
                 if (showWinning)
-                  WinningScreen(
-                    onPlayAgain: _restartGame,
-                    onMainMenu: _goToMainMenu,
-                    playerNumber: winningPlayer?.playerNumber ?? 
-                                  gameInstance.winnerPlayerNumber ?? 1,
-                    winnerName: gameInstance.winnerName,
+                  Builder(
+                    builder: (context) {
+                      final pNum = winningPlayer?.playerNumber ?? 
+                                   gameInstance.winnerPlayerNumber ?? 1;
+                      final wName = gameInstance.winnerName;
+                      print('=== DISPLAYING WINNING SCREEN ===');
+                      print('winningPlayer: $winningPlayer');
+                      print('winningPlayer?.playerNumber: ${winningPlayer?.playerNumber}');
+                      print('gameInstance.winnerPlayerNumber: ${gameInstance.winnerPlayerNumber}');
+                      print('gameInstance.winnerName (from backend or local): $wName');
+                      print('Final playerNumber: $pNum');
+                      print('Final winnerName: $wName');
+                      return WinningScreen(
+                        onPlayAgain: _restartGame,
+                        onMainMenu: _goToMainMenu,
+                        playerNumber: pNum,
+                        winnerName: wName,
+                      );
+                    },
                   ),
               ],
             );
