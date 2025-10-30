@@ -583,30 +583,46 @@ class BombGame extends FlameGame
   void _handleGameStarted(GameStartEvent event) {
     print('=== GAME STARTED EVENT RECEIVED ===');
     print('Room ID: ${event.roomId}');
-    print('Player Characters: ${event.playerCharacters}');
+    print('Player Characters from backend: ${event.playerCharacters}');
     
     // Apply character data from backend if available
     if (event.playerCharacters != null) {
       final charMap = event.playerCharacters!;
       for (final entry in charMap.entries) {
         final playerId = int.tryParse(entry.key);
-        final characterIndex = entry.value as int?;
+        var characterId = entry.value as int?;
         
-        if (playerId != null && characterIndex != null && 
-            characterIndex >= 0 && characterIndex < PlayerCharacter.values.length) {
-          final character = PlayerCharacter.values[characterIndex];
-          _playerCharacters[playerId] = character;
-          print('✓ Applied character for player $playerId: ${character.displayName}');
+        print('Processing character for player $playerId: characterId=$characterId');
+        
+        // Backend might use 1-based IDs (1,2,3,4) while enum is 0-based (0,1,2,3)
+        // Convert if necessary
+        if (characterId != null && characterId > 0) {
+          // Assume backend uses 1-based, convert to 0-based index
+          final characterIndex = characterId - 1;
           
-          // If remote player already exists, update their character
-          if (_remotePlayers.containsKey(playerId)) {
-            print('  Recreating remote player $playerId with correct character');
-            _removeRemotePlayer(playerId);
-            final name = _playerNames[playerId] ?? 'Player $playerId';
-            _ensureRemotePlayer(
-              PlayerSummary(playerId: playerId, displayName: name),
-            );
+          print('  Backend characterId: $characterId (1-based)');
+          print('  Converted to index: $characterIndex (0-based)');
+          
+          if (playerId != null && 
+              characterIndex >= 0 && characterIndex < PlayerCharacter.values.length) {
+            final character = PlayerCharacter.values[characterIndex];
+            _playerCharacters[playerId] = character;
+            print('✓ Applied character for player $playerId: ${character.displayName} (${character.name})');
+            
+            // If remote player already exists, update their character
+            if (_remotePlayers.containsKey(playerId)) {
+              print('  Recreating remote player $playerId with correct character');
+              _removeRemotePlayer(playerId);
+              final name = _playerNames[playerId] ?? 'Player $playerId';
+              _ensureRemotePlayer(
+                PlayerSummary(playerId: playerId, displayName: name),
+              );
+            }
+          } else {
+            print('⚠ Invalid character index after conversion: $characterIndex (from ID: $characterId)');
           }
+        } else {
+          print('⚠ Invalid character ID: $characterId');
         }
       }
     }
@@ -615,24 +631,36 @@ class BombGame extends FlameGame
   void _handleCharacterSelected(CharacterSelectedEvent event) {
     print('=== CHARACTER SELECTED EVENT RECEIVED ===');
     print('Player ID: ${event.playerId}');
-    print('Character Index: ${event.characterIndex}');
+    print('Character ID from backend: ${event.characterIndex}');
     
-    if (event.characterIndex >= 0 && event.characterIndex < PlayerCharacter.values.length) {
-      final character = PlayerCharacter.values[event.characterIndex];
-      _playerCharacters[event.playerId] = character;
-      print('✓ Stored character for player ${event.playerId}: ${character.displayName}');
+    // Backend might use 1-based IDs (1,2,3,4) while enum is 0-based (0,1,2,3)
+    // Convert if necessary
+    var characterId = event.characterIndex;
+    if (characterId > 0) {
+      final characterIndex = characterId - 1; // Convert to 0-based
       
-      // If remote player already exists and it's not us, update their character
-      if (event.playerId != networkPlayerId && _remotePlayers.containsKey(event.playerId)) {
-        print('  Recreating remote player ${event.playerId} with new character');
-        _removeRemotePlayer(event.playerId);
-        final name = _playerNames[event.playerId] ?? 'Player ${event.playerId}';
-        _ensureRemotePlayer(
-          PlayerSummary(playerId: event.playerId, displayName: name),
-        );
+      print('  Backend characterId: $characterId (1-based)');
+      print('  Converted to index: $characterIndex (0-based)');
+      
+      if (characterIndex >= 0 && characterIndex < PlayerCharacter.values.length) {
+        final character = PlayerCharacter.values[characterIndex];
+        _playerCharacters[event.playerId] = character;
+        print('✓ Stored character for player ${event.playerId}: ${character.displayName} (${character.name})');
+        
+        // If remote player already exists and it's not us, update their character
+        if (event.playerId != networkPlayerId && _remotePlayers.containsKey(event.playerId)) {
+          print('  Recreating remote player ${event.playerId} with new character');
+          _removeRemotePlayer(event.playerId);
+          final name = _playerNames[event.playerId] ?? 'Player ${event.playerId}';
+          _ensureRemotePlayer(
+            PlayerSummary(playerId: event.playerId, displayName: name),
+          );
+        }
+      } else {
+        print('⚠ Invalid character index after conversion: $characterIndex (from ID: $characterId)');
       }
     } else {
-      print('⚠ Invalid character index: ${event.characterIndex}');
+      print('⚠ Invalid character ID: $characterId');
     }
   }
 
@@ -720,10 +748,15 @@ class BombGame extends FlameGame
 
     print('=== SENDING CHARACTER SELECTION TO BACKEND ===');
     print('Player ID: $playerId');
-    print('Character: ${character.displayName} (index: ${character.index})');
+    print('Character: ${character.displayName} (enum: ${character.name})');
+    print('Enum index (0-based): ${character.index}');
+    
+    // Backend expects 1-based character IDs (1,2,3,4), so add 1 to the 0-based index
+    final characterId = character.index + 1;
+    print('Sending character ID (1-based): $characterId');
 
     _dispatchNetworkCall(
-      networkClient!.selectCharacter(networkRoomId!, playerId, character.index),
+      networkClient!.selectCharacter(networkRoomId!, playerId, characterId),
       'selectCharacter',
     );
   }
