@@ -118,7 +118,7 @@ class _MainMenuState extends State<MainMenu> {
                       border: Border.all(color: const Color(0xFF9BBC0F), width: 2),
                     ),
                     child: const Text(
-                      '© 2025 ISNEXIS - RETRO EDITION',
+                      '© 2025 ISNEXIS',
                       style: TextStyle(
                         fontSize: 12,
                         fontFamily: 'Courier',
