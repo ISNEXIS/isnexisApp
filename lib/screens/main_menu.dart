@@ -95,26 +95,6 @@ class _MainMenuState extends State<MainMenu> {
                     ],
                   ),
                   
-                  const SizedBox(height: 20),
-                  
-                  // Subtitle
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-                    decoration: BoxDecoration(
-                      color: Colors.black.withOpacity(0.5),
-                      border: Border.all(color: const Color(0xFF9BBC0F), width: 2),
-                    ),
-                    child: const Text(
-                      '< PRESS ARROW KEYS TO SELECT >',
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontFamily: 'Courier',
-                        color: Color(0xFF9BBC0F),
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ),
-                  
                   const SizedBox(height: 60),
                   
                   // Menu items

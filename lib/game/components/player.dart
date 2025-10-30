@@ -184,6 +184,9 @@ class Player extends PositionComponent {
     super.update(dt);
 
     if (getIsGameOver()) return;
+    
+    // Don't update movement if player is dead
+    if (playerHealth <= 0) return;
 
     // Handle invincibility timer
     if (isInvincible) {
@@ -345,6 +348,17 @@ class Player extends PositionComponent {
       animationGroupComponent!.opacity = visible ? 1.0 : 0.3;
     } else if (rectangleComponent != null) {
       rectangleComponent!.opacity = visible ? 1.0 : 0.3;
+    }
+  }
+
+  void setSpectatorMode(bool isSpectator) {
+    // Make player semi-transparent when in spectator mode (dead)
+    if (spriteComponent != null) {
+      spriteComponent!.opacity = isSpectator ? 0.3 : 1.0;
+    } else if (animationGroupComponent != null) {
+      animationGroupComponent!.opacity = isSpectator ? 0.3 : 1.0;
+    } else if (rectangleComponent != null) {
+      rectangleComponent!.opacity = isSpectator ? 0.3 : 1.0;
     }
   }
 

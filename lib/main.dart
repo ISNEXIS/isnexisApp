@@ -87,7 +87,9 @@ class _IsnexisState extends State<Isnexis> {
                   WinningScreen(
                     onPlayAgain: _restartGame,
                     onMainMenu: _goToMainMenu,
-                    playerNumber: winningPlayer?.playerNumber ?? 1,
+                    playerNumber: winningPlayer?.playerNumber ?? 
+                                  gameInstance.winnerPlayerNumber ?? 1,
+                    winnerName: gameInstance.winnerName,
                   ),
               ],
             );
@@ -178,13 +180,32 @@ class _IsnexisState extends State<Isnexis> {
         if (isGameOver) {
           setState(() {
             winningPlayer = winner;
-            // Determine if it's game over or winning
-            if (winner != null && winner.playerHealth > 0) {
+            
+            // In multiplayer, NEVER show game over screen - only winning screen at the end
+            final isMultiplayer = hubClient != null && roomId != null;
+            
+            if (isMultiplayer) {
+              // In multiplayer, only show winning screen when callback is triggered
+              // This happens when:
+              // 1. Local player won (winner != null)
+              // 2. Game ended and server sent gameEnded event (for dead players)
               showWinning = true;
               showGameOver = false;
+              
+              if (winningPlayer != null) {
+                print('Local player won! Showing winning screen.');
+              } else {
+                print('Game ended. Dead player viewing winner screen. Winner is P${gameInstance.winnerPlayerNumber}');
+              }
             } else {
-              showGameOver = true;
-              showWinning = false;
+              // Single player: Show game over or winning as before
+              if (winner != null && winner.playerHealth > 0) {
+                showWinning = true;
+                showGameOver = false;
+              } else {
+                showGameOver = true;
+                showWinning = false;
+              }
             }
           });
         }
@@ -218,12 +239,31 @@ class _IsnexisState extends State<Isnexis> {
     _pendingMultiplayerConfig = null;
   }
 
-  void _restartGame() {
-    gameInstance.restartGame();
-    setState(() {
-      showGameOver = false;
-      showWinning = false;
-    });
+  void _restartGame() async {
+    // Check if this is a multiplayer game
+    final multiplayerConfig = _pendingMultiplayerConfig;
+    
+    if (multiplayerConfig != null && _activeHubClient != null) {
+      // Multiplayer: Return to lobby with same room
+      print('Restarting multiplayer game - returning to lobby');
+      
+      setState(() {
+        showGame = false;
+        showGameOver = false;
+        showWinning = false;
+        showMultiplayerLobby = true;
+      });
+      
+      // Note: The lobby screen will handle rejoining the same room
+      // The room ID and player ID are still in _pendingMultiplayerConfig
+    } else {
+      // Single player: Just restart the game instance
+      gameInstance.restartGame();
+      setState(() {
+        showGameOver = false;
+        showWinning = false;
+      });
+    }
   }
 
   void _goToMainMenu() async {

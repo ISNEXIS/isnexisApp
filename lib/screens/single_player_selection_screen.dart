@@ -112,7 +112,7 @@ class _SinglePlayerSelectionScreenState extends State<SinglePlayerSelectionScree
                         fontWeight: FontWeight.bold,
                       ),
                     ),
-                    for (int i = 1; i <= 4; i++)
+                    for (int i = 2; i <= 4; i++)
                       Padding(
                         padding: const EdgeInsets.symmetric(horizontal: 4),
                         child: GestureDetector(
@@ -253,11 +253,13 @@ class _PlayerCharacterSelectorState extends State<_PlayerCharacterSelector> {
     super.initState();
     if (widget.selectedData != null) {
       selectedCharacter = widget.selectedData!.character;
-      isBot = widget.selectedData!.isBot;
-    } else if (widget.playerNumber > 1) {
-      // Default to bot for players 2+
-      isBot = true;
+      // Force player 1 to be human, players 2+ to be bots
+      isBot = widget.playerNumber > 1;
+    } else {
+      // Force player 1 to be human, players 2+ to be bots
+      isBot = widget.playerNumber > 1;
     }
+    
     _notifyChange();
   }
 
@@ -293,28 +295,20 @@ class _PlayerCharacterSelectorState extends State<_PlayerCharacterSelector> {
                 ),
               ),
               const Spacer(),
-              // Human/Bot toggle
-              GestureDetector(
-                onTap: () {
-                  setState(() {
-                    isBot = !isBot;
-                    _notifyChange();
-                  });
-                },
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                  decoration: BoxDecoration(
-                    color: isBot ? const Color(0xFF306230) : const Color(0xFF9BBC0F),
-                    border: Border.all(color: const Color(0xFF9BBC0F), width: 2),
-                  ),
-                  child: Text(
-                    isBot ? '🤖 BOT' : '👤 HUMAN',
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontFamily: 'Courier',
-                      color: isBot ? const Color(0xFF9BBC0F) : Colors.black,
-                      fontWeight: FontWeight.bold,
-                    ),
+              // Bot indicator (only for player 1, show "HUMAN", others show "BOT")
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                decoration: BoxDecoration(
+                  color: widget.playerNumber == 1 ? const Color(0xFF9BBC0F) : const Color(0xFF306230),
+                  border: Border.all(color: const Color(0xFF9BBC0F), width: 2),
+                ),
+                child: Text(
+                  widget.playerNumber == 1 ? '👤 HUMAN' : '🤖 BOT',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontFamily: 'Courier',
+                    color: widget.playerNumber == 1 ? Colors.black : const Color(0xFF9BBC0F),
+                    fontWeight: FontWeight.bold,
                   ),
                 ),
               ),
