@@ -71,31 +71,31 @@ class Powerup extends PositionComponent {
     }
   }
 
-  String getDisplayName() {
+  String getDisplayName({int multiplier = 1}) {
     switch (type) {
       case PowerupType.extraLife:
-        return '+1 Life';
+        return '+$multiplier Life';
       case PowerupType.extraBomb:
-        return '+1 Bomb';
+        return '+$multiplier Bomb';
       case PowerupType.explosionRange:
-        return '+1 Range';
+        return '+$multiplier Range';
     }
   }
 
-  void applyToPlayer(Player player) {
+  void applyToPlayer(Player player, {int multiplier = 1}) {
     if (collected) return;
     
     collected = true;
     
     switch (type) {
       case PowerupType.extraLife:
-        player.playerHealth++;
+        player.playerHealth += multiplier;
         break;
       case PowerupType.extraBomb:
-        player.maxBombs++;
+        player.maxBombs += multiplier;
         break;
       case PowerupType.explosionRange:
-        player.explosionRadius++;
+        player.explosionRadius += multiplier;
         break;
     }
   }

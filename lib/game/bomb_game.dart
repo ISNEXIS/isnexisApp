@@ -1383,8 +1383,11 @@ class BombGame extends FlameGame
       Vector2(1, 0), // Right
     ];
 
+    // Collect all destroyed destructible positions
+    final List<Vector2> destroyedPositions = [];
+
     // Explode center position
-    _explodePosition(centerPos, shouldSpawnPowerups: shouldSpawnPowerups);
+    _explodePosition(centerPos, shouldSpawnPowerups: false, destroyedPositions: destroyedPositions);
 
     // Explode in each direction
     for (final direction in directions) {
@@ -1410,7 +1413,7 @@ class BombGame extends FlameGame
         }
 
         // Explode this position (only for empty or destructible tiles)
-        _explodePosition(explodePos, shouldSpawnPowerups: shouldSpawnPowerups);
+        _explodePosition(explodePos, shouldSpawnPowerups: false, destroyedPositions: destroyedPositions);
 
         // Stop explosion if we hit a destructible (after destroying it)
         if (tileType == TileType.destructible) {
@@ -1418,9 +1421,23 @@ class BombGame extends FlameGame
         }
       }
     }
+
+    // After all explosions, spawn ONE powerup if conditions are met
+    if (shouldSpawnPowerups && destroyedPositions.isNotEmpty && _random.nextDouble() < 0.20) {
+      // Pick a random destroyed position to spawn the powerup
+      final spawnPos = destroyedPositions[_random.nextInt(destroyedPositions.length)];
+      print('  Rolling for powerup spawn at (${spawnPos.x.toInt()}, ${spawnPos.y.toInt()})...');
+      final powerupType = _spawnRandomPowerup(spawnPos);
+      print('  ✓ Spawned powerup: ${powerupType.name}');
+      
+      // Broadcast powerup spawn in multiplayer
+      if (_networkEnabled && networkClient != null && networkRoomId != null) {
+        _broadcastPowerupSpawn(spawnPos, powerupType);
+      }
+    }
   }
 
-  void _explodePosition(Vector2 pos, {bool shouldSpawnPowerups = false}) {
+  void _explodePosition(Vector2 pos, {bool shouldSpawnPowerups = false, List<Vector2>? destroyedPositions}) {
     final x = pos.x.toInt();
     final y = pos.y.toInt();
 
@@ -1436,17 +1453,9 @@ class BombGame extends FlameGame
       gameMap[y][x] = TileType.empty;
       score += 10; // Add points for destroying walls
 
-      // Spawn powerup if enabled for this explosion
-      // 20% chance to spawn a random powerup
-      if (shouldSpawnPowerups && _random.nextDouble() < 0.20) {
-        print('  Rolling for powerup spawn at ($x, $y)...');
-        final powerupType = _spawnRandomPowerup(pos);
-        print('  ✓ Spawned powerup: ${powerupType.name}');
-        
-        // Broadcast powerup spawn in multiplayer
-        if (_networkEnabled && networkClient != null && networkRoomId != null) {
-          _broadcastPowerupSpawn(pos, powerupType);
-        }
+      // Track destroyed positions for later powerup spawning
+      if (destroyedPositions != null) {
+        destroyedPositions.add(pos.clone());
       }
 
       // Update the visual tile
@@ -1603,8 +1612,11 @@ class BombGame extends FlameGame
 
         // Check if player is on the same grid position as powerup
         if (playerGridX == powerupGridX && playerGridY == powerupGridY) {
-          // Apply powerup to player
-          powerup.applyToPlayer(player);
+          // Apply powerup to player with standard +1 bonus
+          final multiplier = 1;
+          powerup.applyToPlayer(player, multiplier: multiplier);
+          
+          print('Powerup collected: ${powerup.type.name} (+$multiplier) by player');
           
           // Broadcast powerup collection in multiplayer
           if (_networkJoined && networkClient != null && networkRoomId != null && networkPlayerId != null) {
