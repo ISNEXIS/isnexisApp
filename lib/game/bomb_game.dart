@@ -63,6 +63,7 @@ class BombGame extends FlameGame
   final Set<int> _deadPlayers = {}; // Track dead players to prevent re-adding them
   
   int? _winnerPlayerNumber; // Stores the winner's player number (1-4) for display
+  String? _winnerNameFromBackend; // Stores winner name received from backend
 
   bool _networkJoined = false;
   static const double _movementBroadcastInterval = 0.1;
@@ -89,6 +90,11 @@ class BombGame extends FlameGame
   
   // Get the winner's name for multiplayer display
   String? get winnerName {
+    // Prioritize backend winner name if available
+    if (_winnerNameFromBackend != null) {
+      return _winnerNameFromBackend;
+    }
+    
     if (_winnerPlayerNumber == null) return null;
     
     // Find the player ID with this room position
@@ -374,20 +380,27 @@ class BombGame extends FlameGame
       
       print('Local player spawned: gridPos(${player.gridPosition.x}, ${player.gridPosition.y}), pixelPos(${player.position.x}, ${player.position.y})');
       print('TileSize: $tileSize, GridSize: ${gridWidth}x$gridHeight');
+      print('Player character: ${playerData.character.displayName} (index: ${playerData.character.index})');
+      
+      // Send character selection to backend to ensure consistency
+      _sendCharacterSelection(networkPlayerId, playerData.character);
       
       return;
     }
 
     print('=== SINGLE PLAYER SPAWN ===');
+    print('Spawning ${selectedPlayers.length} player(s)');
     // Single player / local mode - create all players
     for (int i = 0; i < selectedPlayers.length; i++) {
       final playerData = selectedPlayers[i];
+      final spawnPos = spawnPositions[i];
+      print('Player ${i + 1} spawning at: (${spawnPos.x}, ${spawnPos.y})');
       Player player;
       
       if (playerData.isBot) {
         // Create bot player (hard difficulty)
         final botPlayer = BotPlayer(
-          gridPosition: spawnPositions[i],
+          gridPosition: spawnPos,
           color: playerData.character.fallbackColor,
           character: playerData.character,
           playerNumber: i + 1,
@@ -410,7 +423,7 @@ class BombGame extends FlameGame
       } else {
         // Create human player
         player = Player(
-          gridPosition: spawnPositions[i],
+          gridPosition: spawnPos,
           color: playerData.character.fallbackColor,
           character: playerData.character,
           playerNumber: i + 1,
@@ -429,6 +442,12 @@ class BombGame extends FlameGame
       player.playerHealth = 1; // Initialize player health
       players.add(player);
       add(player);
+      print('  -> Added: Player ${i + 1} at (${player.gridPosition.x}, ${player.gridPosition.y}), Health: ${player.playerHealth}');
+    }
+    
+    print('Total players spawned: ${players.length}');
+    for (int i = 0; i < players.length; i++) {
+      print('  Player ${i + 1}: Position (${players[i].gridPosition.x}, ${players[i].gridPosition.y})');
     }
   }
 
@@ -502,6 +521,14 @@ class BombGame extends FlameGame
     );
 
     _networkSubscriptions.add(
+      client.gameStartStream.listen(_handleGameStarted),
+    );
+
+    _networkSubscriptions.add(
+      client.characterSelectedStream.listen(_handleCharacterSelected),
+    );
+
+    _networkSubscriptions.add(
       client.playerMovementStream.listen(_handleRemoteMovement),
     );
 
@@ -553,41 +580,145 @@ class BombGame extends FlameGame
     _networkJoined = false;
   }
 
+  void _handleGameStarted(GameStartEvent event) {
+    print('=== GAME STARTED EVENT RECEIVED ===');
+    print('Room ID: ${event.roomId}');
+    print('Player Characters: ${event.playerCharacters}');
+    
+    // Apply character data from backend if available
+    if (event.playerCharacters != null) {
+      final charMap = event.playerCharacters!;
+      for (final entry in charMap.entries) {
+        final playerId = int.tryParse(entry.key);
+        final characterIndex = entry.value as int?;
+        
+        if (playerId != null && characterIndex != null && 
+            characterIndex >= 0 && characterIndex < PlayerCharacter.values.length) {
+          final character = PlayerCharacter.values[characterIndex];
+          _playerCharacters[playerId] = character;
+          print('✓ Applied character for player $playerId: ${character.displayName}');
+          
+          // If remote player already exists, update their character
+          if (_remotePlayers.containsKey(playerId)) {
+            print('  Recreating remote player $playerId with correct character');
+            _removeRemotePlayer(playerId);
+            final name = _playerNames[playerId] ?? 'Player $playerId';
+            _ensureRemotePlayer(
+              PlayerSummary(playerId: playerId, displayName: name),
+            );
+          }
+        }
+      }
+    }
+  }
+
+  void _handleCharacterSelected(CharacterSelectedEvent event) {
+    print('=== CHARACTER SELECTED EVENT RECEIVED ===');
+    print('Player ID: ${event.playerId}');
+    print('Character Index: ${event.characterIndex}');
+    
+    if (event.characterIndex >= 0 && event.characterIndex < PlayerCharacter.values.length) {
+      final character = PlayerCharacter.values[event.characterIndex];
+      _playerCharacters[event.playerId] = character;
+      print('✓ Stored character for player ${event.playerId}: ${character.displayName}');
+      
+      // If remote player already exists and it's not us, update their character
+      if (event.playerId != networkPlayerId && _remotePlayers.containsKey(event.playerId)) {
+        print('  Recreating remote player ${event.playerId} with new character');
+        _removeRemotePlayer(event.playerId);
+        final name = _playerNames[event.playerId] ?? 'Player ${event.playerId}';
+        _ensureRemotePlayer(
+          PlayerSummary(playerId: event.playerId, displayName: name),
+        );
+      }
+    } else {
+      print('⚠ Invalid character index: ${event.characterIndex}');
+    }
+  }
+
   void _handleRemoteGameEnded(GameEndedEvent event) {
     if (isGameOver) {
       return;
     }
 
     print('Received gameEnded event from server');
+    print('Event data: winnerId=${event.winnerId}, winnerName=${event.winnerName}, winnerRoomPosition=${event.winnerRoomPosition}');
     isGameOver = true;
     
-    // Find the winner - the player NOT in the dead set
-    print('=== GAME ENDED - FINDING WINNER FOR DEAD PLAYER ===');
-    print('Dead players: $_deadPlayers');
-    print('All players in room: ${_playerIdToRoomPosition.keys.toList()}');
-    
-    int? winnerPlayerId;
-    
-    // Find the player who is NOT dead
-    for (var playerId in _playerIdToRoomPosition.keys) {
-      if (!_deadPlayers.contains(playerId)) {
-        winnerPlayerId = playerId;
-        break;
-      }
-    }
-    
-    if (winnerPlayerId != null) {
-      final winnerRoomPos = _playerIdToRoomPosition[winnerPlayerId] ?? 1;
-      _winnerPlayerNumber = winnerRoomPos;
-      final winnerName = _playerNames[winnerPlayerId] ?? 'Player $winnerRoomPos';
-      print('✓ Winner is player $winnerPlayerId (P$winnerRoomPos - $winnerName)');
+    // Use winner data from backend if available
+    if (event.winnerRoomPosition != null) {
+      _winnerPlayerNumber = event.winnerRoomPosition;
+      _winnerNameFromBackend = event.winnerName; // Store name from backend
+      print('✓ Using winner data from backend: P${event.winnerRoomPosition} - ${event.winnerName ?? "Unknown"}');
     } else {
-      print('⚠ Warning: Could not determine winner from gameEnded event!');
-      _winnerPlayerNumber = 1; // Fallback
+      // Fallback: Find the winner - the player NOT in the dead set
+      print('=== GAME ENDED - FINDING WINNER FOR DEAD PLAYER ===');
+      print('Dead players: $_deadPlayers');
+      print('All players in room: ${_playerIdToRoomPosition.keys.toList()}');
+      
+      int? winnerPlayerId;
+      
+      // Find the player who is NOT dead
+      for (var playerId in _playerIdToRoomPosition.keys) {
+        if (!_deadPlayers.contains(playerId)) {
+          winnerPlayerId = playerId;
+          break;
+        }
+      }
+      
+      if (winnerPlayerId != null) {
+        final winnerRoomPos = _playerIdToRoomPosition[winnerPlayerId] ?? 1;
+        _winnerPlayerNumber = winnerRoomPos;
+        final winnerName = _playerNames[winnerPlayerId] ?? 'Player $winnerRoomPos';
+        print('✓ Winner is player $winnerPlayerId (P$winnerRoomPos - $winnerName)');
+      } else {
+        print('⚠ Warning: Could not determine winner from gameEnded event!');
+        _winnerPlayerNumber = 1; // Fallback
+      }
     }
     
     // Now notify to show winning screen to dead players
     onGameStateChanged(true, winner: winner);
+  }
+
+  void _sendGameEndToBackend(int winnerId, int winnerRoomPosition, String? winnerName) {
+    if (!_networkJoined || networkClient == null || networkRoomId == null) {
+      print('Cannot send game end - not connected to network');
+      return;
+    }
+
+    print('=== SENDING GAME END TO BACKEND ===');
+    print('Winner ID: $winnerId');
+    print('Winner Room Position: $winnerRoomPosition');
+    print('Winner Name: $winnerName');
+
+    final summary = <String, dynamic>{
+      'winnerId': winnerId,
+      'winnerRoomPosition': winnerRoomPosition,
+      'winnerName': winnerName ?? 'Player $winnerRoomPosition',
+      'timestamp': DateTime.now().toIso8601String(),
+    };
+
+    _dispatchNetworkCall(
+      networkClient!.sendGameEnd(networkRoomId!, summary),
+      'sendGameEnd',
+    );
+  }
+
+  void _sendCharacterSelection(int? playerId, PlayerCharacter character) {
+    if (!_networkJoined || networkClient == null || networkRoomId == null || playerId == null) {
+      print('Cannot send character selection - not connected to network');
+      return;
+    }
+
+    print('=== SENDING CHARACTER SELECTION TO BACKEND ===');
+    print('Player ID: $playerId');
+    print('Character: ${character.displayName} (index: ${character.index})');
+
+    _dispatchNetworkCall(
+      networkClient!.selectCharacter(networkRoomId!, playerId, character.index),
+      'selectCharacter',
+    );
   }
 
   void _dispatchNetworkCall(Future<void> future, String actionDescription) {
@@ -852,14 +983,17 @@ class BombGame extends FlameGame
     final powerupId = payload['id'] as num?;
     
     if (gridX == null || gridY == null || typeIndex == null || powerupId == null) {
-      print('RECV: Invalid powerup spawn payload');
+      print('RECV: Invalid powerup spawn payload: $payload');
       return;
     }
     
     final pos = Vector2(gridX.toDouble(), gridY.toDouble());
     final type = PowerupType.values[typeIndex.toInt()];
     
-    print('RECV: Powerup spawn ${type.name} at ($gridX, $gridY) with ID $powerupId');
+    print('=== RECEIVED POWERUP SPAWN ===');
+    print('Type: ${type.name} (index: ${typeIndex.toInt()})');
+    print('Position: ($gridX, $gridY)');
+    print('ID: $powerupId');
     
     // Create the powerup
     final powerup = Powerup(
@@ -871,6 +1005,7 @@ class BombGame extends FlameGame
     
     add(powerup);
     powerups.add(powerup);
+    print('✓ Powerup created and added to game');
     
     // Update our counter to avoid ID conflicts
     if (powerupId.toInt() >= _nextPowerupId) {
@@ -1222,12 +1357,24 @@ class BombGame extends FlameGame
     // Use the owner player's explosion radius
     final explosionRadius = bomb.ownerPlayer?.explosionRadius ?? 1;
 
+    // Determine if this client should spawn powerups
+    // In single player: always
+    // In multiplayer: only if this is our bomb (we placed it)
+    final isOurBomb = bomb.ownerPlayer != null && 
+                      players.isNotEmpty && 
+                      bomb.ownerPlayer == players.first;
+    
+    print('=== BOMB EXPLODED ===');
+    print('Network enabled: $_networkEnabled');
+    print('Is our bomb: $isOurBomb');
+    print('Should spawn powerups: $isOurBomb');
+    
     // Create explosion with player's explosion radius
-    createExplosion(bomb.gridPosition, explosionRadius);
+    createExplosion(bomb.gridPosition, explosionRadius, shouldSpawnPowerups: isOurBomb);
     _broadcastExplosion(bomb.gridPosition, explosionRadius);
   }
 
-  void createExplosion(Vector2 centerPos, int explosionRadius) {
+  void createExplosion(Vector2 centerPos, int explosionRadius, {bool shouldSpawnPowerups = false}) {
     // Explosion directions (up, down, left, right)
     final directions = [
       Vector2(0, -1), // Up
@@ -1236,8 +1383,11 @@ class BombGame extends FlameGame
       Vector2(1, 0), // Right
     ];
 
+    // Collect all destroyed destructible positions
+    final List<Vector2> destroyedPositions = [];
+
     // Explode center position
-    _explodePosition(centerPos);
+    _explodePosition(centerPos, shouldSpawnPowerups: false, destroyedPositions: destroyedPositions);
 
     // Explode in each direction
     for (final direction in directions) {
@@ -1263,7 +1413,7 @@ class BombGame extends FlameGame
         }
 
         // Explode this position (only for empty or destructible tiles)
-        _explodePosition(explodePos);
+        _explodePosition(explodePos, shouldSpawnPowerups: false, destroyedPositions: destroyedPositions);
 
         // Stop explosion if we hit a destructible (after destroying it)
         if (tileType == TileType.destructible) {
@@ -1271,9 +1421,23 @@ class BombGame extends FlameGame
         }
       }
     }
+
+    // After all explosions, spawn ONE powerup if conditions are met
+    if (shouldSpawnPowerups && destroyedPositions.isNotEmpty && _random.nextDouble() < 0.20) {
+      // Pick a random destroyed position to spawn the powerup
+      final spawnPos = destroyedPositions[_random.nextInt(destroyedPositions.length)];
+      print('  Rolling for powerup spawn at (${spawnPos.x.toInt()}, ${spawnPos.y.toInt()})...');
+      final powerupType = _spawnRandomPowerup(spawnPos);
+      print('  ✓ Spawned powerup: ${powerupType.name}');
+      
+      // Broadcast powerup spawn in multiplayer
+      if (_networkEnabled && networkClient != null && networkRoomId != null) {
+        _broadcastPowerupSpawn(spawnPos, powerupType);
+      }
+    }
   }
 
-  void _explodePosition(Vector2 pos) {
+  void _explodePosition(Vector2 pos, {bool shouldSpawnPowerups = false, List<Vector2>? destroyedPositions}) {
     final x = pos.x.toInt();
     final y = pos.y.toInt();
 
@@ -1289,18 +1453,9 @@ class BombGame extends FlameGame
       gameMap[y][x] = TileType.empty;
       score += 10; // Add points for destroying walls
 
-      // Only spawn powerup if we're in single player OR we're the one who placed the bomb
-      // In multiplayer, only the bomb owner decides powerup spawns to keep sync
-      bool shouldDecidePowerup = !_networkEnabled; // Always decide in single player
-      
-      // 20% chance to spawn a random powerup
-      if (shouldDecidePowerup && _random.nextDouble() < 0.20) {
-        final powerupType = _spawnRandomPowerup(pos);
-        
-        // Broadcast powerup spawn in multiplayer
-        if (_networkEnabled && networkClient != null && networkRoomId != null) {
-          _broadcastPowerupSpawn(pos, powerupType);
-        }
+      // Track destroyed positions for later powerup spawning
+      if (destroyedPositions != null) {
+        destroyedPositions.add(pos.clone());
       }
 
       // Update the visual tile
@@ -1313,19 +1468,19 @@ class BombGame extends FlameGame
       return;
     }
 
+    final powerupId = _nextPowerupId - 1; // Use the ID that was just assigned
     final payload = <String, dynamic>{
       'gridX': pos.x.toInt(),
       'gridY': pos.y.toInt(),
       'type': type.index,
-      'id': _nextPowerupId - 1, // Use the ID that was just assigned
+      'id': powerupId,
+      'isPowerupSpawn': true,
     };
 
-    print('Broadcasting powerup spawn: ${type.name} at (${pos.x}, ${pos.y})');
-    
-    // Use sendPlayerMovement with a special marker for powerup spawns
-    // Since there's no dedicated powerup spawn method, we'll use sendExplosion
-    // with a special flag
-    payload['isPowerupSpawn'] = true;
+    print('=== BROADCASTING POWERUP SPAWN ===');
+    print('Type: ${type.name} (index: ${type.index})');
+    print('Position: (${pos.x}, ${pos.y})');
+    print('ID: $powerupId');
     
     _dispatchNetworkCall(
       networkClient!.sendExplosion(networkRoomId!, payload),
@@ -1457,8 +1612,11 @@ class BombGame extends FlameGame
 
         // Check if player is on the same grid position as powerup
         if (playerGridX == powerupGridX && playerGridY == powerupGridY) {
-          // Apply powerup to player
-          powerup.applyToPlayer(player);
+          // Apply powerup to player with standard +1 bonus
+          final multiplier = 1;
+          powerup.applyToPlayer(player, multiplier: multiplier);
+          
+          print('Powerup collected: ${powerup.type.name} (+$multiplier) by player');
           
           // Broadcast powerup collection in multiplayer
           if (_networkJoined && networkClient != null && networkRoomId != null && networkPlayerId != null) {
@@ -1508,7 +1666,21 @@ class BombGame extends FlameGame
           !_deadPlayers.contains(networkPlayerId)) {
         winner = players.first;
         _winnerPlayerNumber = players.first.playerNumber;
+        _winnerNameFromBackend = _playerNames[networkPlayerId] ?? localPlayerName ?? 'Player $_winnerPlayerNumber';
         print('✓ Winner is local player (P$_winnerPlayerNumber)');
+        print('  Network Player ID: $networkPlayerId');
+        print('  Player Number (room position): ${players.first.playerNumber}');
+        print('  Winner Name: $_winnerNameFromBackend');
+        
+        // Send winner data to backend
+        if (_winnerPlayerNumber != null && networkPlayerId != null) {
+          _sendGameEndToBackend(
+            networkPlayerId!,
+            _winnerPlayerNumber!,
+            _winnerNameFromBackend,
+          );
+        }
+        
         // Notify everyone - local player won
         onGameStateChanged(true, winner: winner);
       } else {
@@ -1528,7 +1700,10 @@ class BombGame extends FlameGame
           final winnerRoomPos = _playerIdToRoomPosition[winnerPlayerId] ?? 1;
           _winnerPlayerNumber = winnerRoomPos;
           final winnerName = _playerNames[winnerPlayerId] ?? 'Player $winnerRoomPos';
+          _winnerNameFromBackend = winnerName; // Store the name
           print('✓ Winner is remote player $winnerPlayerId (P$winnerRoomPos - $winnerName)');
+          print('  playerIdToRoomPosition: $_playerIdToRoomPosition');
+          print('  playerNames: $_playerNames');
           // winner stays null for dead players, will use _winnerPlayerNumber in main.dart
         } else {
           print('⚠ Warning: Could not determine winner!');
@@ -1540,12 +1715,15 @@ class BombGame extends FlameGame
         onGameStateChanged(true, winner: winner);
       }
     } else {
-      // Single player: Find the winner from local players
-      winner = players.firstWhere(
-        (player) => player.playerHealth > 0,
-        orElse: () => players.first, // Fallback if all died simultaneously
-      );
-      onGameStateChanged(true, winner: winner); // Notify that game is over with winner
+      // Single player: Check if player is alive or dead
+      if (players.isNotEmpty && players.first.playerHealth > 0) {
+        // Player is alive and won (all bots defeated or game completed)
+        winner = players.first;
+      } else {
+        // Player died - no winner, show game over
+        winner = null;
+      }
+      onGameStateChanged(true, winner: winner); // Notify that game is over
     }
   }
 
@@ -1556,6 +1734,8 @@ class BombGame extends FlameGame
     score = 0;
     alivePlayers = selectedPlayers.length;
     winner = null; // Clear winner
+    _winnerPlayerNumber = null; // Clear winner number
+    _winnerNameFromBackend = null; // Clear backend winner name
 
     // Reset invincibility for all players
     playerInvincibility = [false, false, false, false];

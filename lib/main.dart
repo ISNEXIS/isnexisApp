@@ -13,7 +13,6 @@ import 'screens/main_menu.dart';
 import 'screens/multiplayer_lobby_screen.dart';
 import 'screens/multiplayer_setup_screen.dart';
 import 'screens/player_selection_screen.dart';
-import 'screens/settings_screen.dart';
 import 'screens/winning_screen.dart';
 import 'services/game_hub_client.dart';
 
@@ -84,12 +83,27 @@ class _IsnexisState extends State<Isnexis> {
                   ),
                 // Winning overlay modal
                 if (showWinning)
-                  WinningScreen(
-                    onPlayAgain: _restartGame,
-                    onMainMenu: _goToMainMenu,
-                    playerNumber: winningPlayer?.playerNumber ?? 
-                                  gameInstance.winnerPlayerNumber ?? 1,
-                    winnerName: gameInstance.winnerName,
+                  Builder(
+                    builder: (context) {
+                      final pNum = winningPlayer?.playerNumber ?? 
+                                   gameInstance.winnerPlayerNumber ?? 1;
+                      final wName = gameInstance.winnerName;
+                      print('=== DISPLAYING WINNING SCREEN ===');
+                      print('winningPlayer: $winningPlayer');
+                      print('winningPlayer?.playerNumber: ${winningPlayer?.playerNumber}');
+                      print('gameInstance.winnerPlayerNumber: ${gameInstance.winnerPlayerNumber}');
+                      print('gameInstance.winnerName (from backend or local): $wName');
+                      print('gameInstance._winnerNameFromBackend: Internal check');
+                      print('Final playerNumber to display: $pNum');
+                      print('Final winnerName to display: $wName');
+                      print('Will show: ${wName ?? 'PLAYER $pNum'}');
+                      return WinningScreen(
+                        onPlayAgain: _restartGame,
+                        onMainMenu: _goToMainMenu,
+                        playerNumber: pNum,
+                        winnerName: wName,
+                      );
+                    },
                   ),
               ],
             );
@@ -148,7 +162,6 @@ class _IsnexisState extends State<Isnexis> {
                   showMultiplayerSetup = true;
                 });
               },
-              onSettings: () => _showSettings(context),
               onExit: () => _exitGame(context),
             );
           }
@@ -198,11 +211,12 @@ class _IsnexisState extends State<Isnexis> {
                 print('Game ended. Dead player viewing winner screen. Winner is P${gameInstance.winnerPlayerNumber}');
               }
             } else {
-              // Single player: Show game over or winning as before
+              // Single player: Show winning screen if player survived, game over if died
               if (winner != null && winner.playerHealth > 0) {
                 showWinning = true;
                 showGameOver = false;
               } else {
+                // Player died - show game over screen
                 showGameOver = true;
                 showWinning = false;
               }
@@ -294,13 +308,6 @@ class _IsnexisState extends State<Isnexis> {
     }
     
     _pendingMultiplayerConfig = null;
-  }
-
-  void _showSettings(BuildContext context) {
-    Navigator.push(
-      context,
-      MaterialPageRoute(builder: (context) => const SettingsScreen()),
-    );
   }
 
   void _exitGame(BuildContext context) {

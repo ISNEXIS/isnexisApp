@@ -3,14 +3,12 @@ import 'package:flutter/material.dart';
 class MainMenu extends StatefulWidget {
   final VoidCallback onStart;
   final VoidCallback onMultiplayer;
-  final VoidCallback onSettings;
   final VoidCallback onExit;
 
   const MainMenu({
     super.key,
     required this.onStart,
     required this.onMultiplayer,
-    required this.onSettings,
     required this.onExit,
   });
 
@@ -23,7 +21,6 @@ class _MainMenuState extends State<MainMenu> {
   final List<String> menuItems = [
     'START GAME',
     'MULTIPLAYER',
-    'SETTINGS',
     'EXIT',
   ];
 
@@ -152,9 +149,6 @@ class _MainMenuState extends State<MainMenu> {
           widget.onMultiplayer();
           break;
         case 2:
-          widget.onSettings();
-          break;
-        case 3:
           widget.onExit();
           break;
       }

@@ -138,6 +138,14 @@ class GameHubClient {
     _logger.info('StartGame invoked successfully');
   }
 
+  Future<void> sendGameStartWithCharacters(int roomId, JsonMap playerCharacters) async {
+    print('Invoking SendGameStartWithCharacters: roomId=$roomId, characters=$playerCharacters');
+    _logger.info('Invoking SendGameStartWithCharacters: roomId=$roomId, characters=$playerCharacters');
+    await _invoke('SendGameStartWithCharacters', args: [roomId, playerCharacters]);
+    print('SendGameStartWithCharacters invoked successfully');
+    _logger.info('SendGameStartWithCharacters invoked successfully');
+  }
+
   Future<void> sendPlayerMovement(int roomId, JsonMap position) async {
     await _invoke('SendPlayerMovement', args: [roomId, position]);
   }
@@ -329,10 +337,14 @@ class GameHubClient {
       _logger.info('Args: $args');
       if (args != null && args.isNotEmpty) {
         final roomId = args[0] as int?;
-        print('Parsed roomId: $roomId');
-        _logger.info('Parsed roomId: $roomId');
+        final playerCharacters = args.length > 1 ? _parseMap(args[1]) : null;
+        print('Parsed roomId: $roomId, playerCharacters: $playerCharacters');
+        _logger.info('Parsed roomId: $roomId, playerCharacters: $playerCharacters');
         if (roomId != null) {
-          _gameStartController.add(GameStartEvent(roomId: roomId));
+          _gameStartController.add(GameStartEvent(
+            roomId: roomId,
+            playerCharacters: playerCharacters,
+          ));
           print('GameStartEvent added to stream');
           _logger.info('GameStartEvent added to stream');
         } else {
@@ -445,8 +457,22 @@ class GameHubClient {
 
     final winnerId = _toInt(args[0]);
     final summary = args.length > 1 ? _parseMap(args[1]) : null;
+    
+    // Extract winner details from summary if available
+    String? winnerName;
+    int? winnerRoomPosition;
+    
+    if (summary != null) {
+      winnerName = summary['winnerName']?.toString();
+      winnerRoomPosition = _toInt(summary['winnerRoomPosition']);
+    }
 
-    return GameEndedEvent(winnerId: winnerId, summary: summary);
+    return GameEndedEvent(
+      winnerId: winnerId,
+      summary: summary,
+      winnerName: winnerName,
+      winnerRoomPosition: winnerRoomPosition,
+    );
   }
 
   List<PlayerSummary>? _parsePlayerSummaryList(List<Object?>? args) {
@@ -543,10 +569,17 @@ class ItemCollectedEvent {
 }
 
 class GameEndedEvent {
-  GameEndedEvent({required this.winnerId, required this.summary});
+  GameEndedEvent({
+    required this.winnerId,
+    required this.summary,
+    this.winnerName,
+    this.winnerRoomPosition,
+  });
 
   final int? winnerId;
   final JsonMap? summary;
+  final String? winnerName;
+  final int? winnerRoomPosition;
 }
 
 class PlayerReadyEvent {
@@ -557,9 +590,13 @@ class PlayerReadyEvent {
 }
 
 class GameStartEvent {
-  GameStartEvent({required this.roomId});
+  GameStartEvent({
+    required this.roomId,
+    this.playerCharacters,
+  });
 
   final int roomId;
+  final JsonMap? playerCharacters; // Map of playerId -> characterIndex
 }
 
 class CharacterSelectedEvent {
