@@ -51,7 +51,7 @@ class GameSidebar extends PositionComponent {
     
     // Title
     titleText = TextComponent(
-      text: '📊 STATS',
+      text: 'STATISTICS',
       textRenderer: TextPaint(
         style: const TextStyle(
           color: Colors.white,

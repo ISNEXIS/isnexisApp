@@ -75,7 +75,7 @@ class MapTile extends PositionComponent {
   Color _getColor() {
     switch (tileType) {
       case TileType.empty:
-        return Colors.green[100]!;
+        return const Color.fromARGB(255, 22, 22, 22)!;
       case TileType.wall:
         return Colors.grey[800]!;
       case TileType.destructible:
