@@ -56,13 +56,13 @@ extension PlayerCharacterExtension on PlayerCharacter {
   String get displayName {
     switch (this) {
       case PlayerCharacter.character1:
-        return 'Character 1';
+        return 'Kawin';
       case PlayerCharacter.character2:
-        return 'Character 2';
+        return 'Eira';
       case PlayerCharacter.character3:
-        return 'Character 3';
+        return 'Ansia';
       case PlayerCharacter.character4:
-        return 'Character 4';
+        return 'Pavo';
     }
   }
 
