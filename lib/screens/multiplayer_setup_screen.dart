@@ -39,11 +39,12 @@ class MultiplayerSetupScreen extends StatefulWidget {
 
 class _MultiplayerSetupScreenState extends State<MultiplayerSetupScreen> {
   final _formKey = GlobalKey<FormState>();
-  late final TextEditingController _serverController;
   late final TextEditingController _displayNameController;
   late final TextEditingController _joinCodeController;
   late final TextEditingController _roomNameController;
   double _maxPlayersValue = 4;
+
+  static const String _defaultServerUrl = 'http://45.154.24.169:8080/';
 
   String? _errorMessage;
   bool _isLoading = false;
@@ -52,7 +53,6 @@ class _MultiplayerSetupScreenState extends State<MultiplayerSetupScreen> {
   @override
   void initState() {
     super.initState();
-    _serverController = TextEditingController(text: 'http://45.154.24.169:8080/');
     _displayNameController = TextEditingController();
     _joinCodeController = TextEditingController();
     _roomNameController = TextEditingController();
@@ -60,7 +60,6 @@ class _MultiplayerSetupScreenState extends State<MultiplayerSetupScreen> {
 
   @override
   void dispose() {
-    _serverController.dispose();
     _displayNameController.dispose();
     _joinCodeController.dispose();
     _roomNameController.dispose();
@@ -120,12 +119,6 @@ class _MultiplayerSetupScreenState extends State<MultiplayerSetupScreen> {
                           ),
                         ),
                         const SizedBox(height: 24),
-                        _buildRetroTextField(
-                          controller: _serverController,
-                          label: 'SERVER URL',
-                          hintText: 'http://45.154.24.169:8080/',
-                        ),
-                        const SizedBox(height: 16),
                         _buildRetroTextField(
                           controller: _displayNameController,
                           label: 'PLAYER NAME',
@@ -441,7 +434,7 @@ class _MultiplayerSetupScreenState extends State<MultiplayerSetupScreen> {
       return;
     }
 
-    final baseUrl = _serverController.text.trim();
+    final baseUrl = _defaultServerUrl;
     final displayName = _displayNameController.text.trim();
 
     if (displayName.isEmpty) {
@@ -496,7 +489,7 @@ class _MultiplayerSetupScreenState extends State<MultiplayerSetupScreen> {
       print('Connection error: $error');
       setState(() {
         _errorMessage =
-            'Unable to contact the server. Please check the URL and try again.\nError: $error';
+            'Unable to contact the server. Please try again or contact the host.\nError: $error';
       });
     } finally {
       if (mounted) {
