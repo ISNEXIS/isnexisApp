@@ -99,10 +99,9 @@ This document explains how players interact with the game, including all input m
 
 **Create Room Flow**:
 1. Enter your display name
-2. Enter backend server URL (e.g., `http://localhost:5000`)
-3. Click "CREATE ROOM"
-4. System generates 6-digit room code
-5. Transition to multiplayer lobby
+2. Click "CREATE ROOM"
+3. System generates 6-digit room code
+4. Transition to multiplayer lobby
 
 **Join Room Flow**:
 1. Enter your display name

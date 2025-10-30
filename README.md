@@ -170,12 +170,6 @@ lib/
 
 ## 🔧 Configuration
 
-### Backend URL
-Update in `multiplayer_setup_screen.dart` or enter during gameplay:
-```dart
-final baseUrl = 'http://your-backend-url:port';
-```
-
 ### Grid Configuration
 Modify in `bomb_game.dart`:
 ```dart
