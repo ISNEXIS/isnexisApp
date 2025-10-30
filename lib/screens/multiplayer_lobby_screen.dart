@@ -51,10 +51,11 @@ class _MultiplayerLobbyScreenState extends State<MultiplayerLobbyScreen> {
     final localPlayerId = widget.localPlayerId;
     if (localPlayerId != null) {
       playerCharacters[localPlayerId] = selectedCharacter;
-      // The local player is the host when they create the room
-      _hostPlayerId = localPlayerId;
-      print('=== HOST INITIALIZED ===');
-      print('Host player ID: $_hostPlayerId');
+      // Don't set host here - wait for backend to tell us who the host is
+      // The backend will send the hostPlayerId in the RoomRoster event
+      print('=== LOBBY INITIALIZED ===');
+      print('Local player ID: $localPlayerId');
+      print('Waiting for backend to identify host...');
     }
     _initializeMultiplayer();
   }
@@ -81,15 +82,22 @@ class _MultiplayerLobbyScreenState extends State<MultiplayerLobbyScreen> {
         
         // Set up listeners BEFORE joining the room
         // Listen for room roster updates (full player list)
-        _rosterSubscription = hubClient.roomRosterStream.listen((players) {
+        _rosterSubscription = hubClient.roomRosterStream.listen((rosterEvent) {
           print('>>> ROOM ROSTER EVENT RECEIVED <<<');
-          print('Number of players in roster: ${players.length}');
-          for (var player in players) {
+          print('Number of players in roster: ${rosterEvent.players.length}');
+          print('Host player ID from backend: ${rosterEvent.hostPlayerId}');
+          for (var player in rosterEvent.players) {
             print('  - Player: ${player.displayName} (ID: ${player.playerId})');
           }
           setState(() {
+            // Update host from backend if provided
+            if (rosterEvent.hostPlayerId != null) {
+              _hostPlayerId = rosterEvent.hostPlayerId;
+              print('✓ Host updated from backend: $_hostPlayerId');
+            }
+            
             lobbyPlayers.clear();
-            for (var player in players) {
+            for (var player in rosterEvent.players) {
               final isMe = player.playerId == localPlayerId;
               lobbyPlayers.add({
                 'playerId': player.playerId,
@@ -111,10 +119,13 @@ class _MultiplayerLobbyScreenState extends State<MultiplayerLobbyScreen> {
               });
             }
             
-            // Update host if current host left
-            _updateHost();
+            // Fallback: Update host if current host left (only if backend didn't provide host)
+            if (rosterEvent.hostPlayerId == null) {
+              _updateHost();
+            }
             
             print('Lobby players list updated: ${lobbyPlayers.length} players');
+            print('Current host: $_hostPlayerId');
           });
         }, onError: (error) {
           print('ERROR in roomRosterStream: $error');
@@ -319,17 +330,19 @@ class _MultiplayerLobbyScreenState extends State<MultiplayerLobbyScreen> {
     // If current host still exists in lobby, keep them
     if (_hostPlayerId != null && 
         lobbyPlayers.any((p) => p['playerId'] == _hostPlayerId)) {
-      print('Host $_hostPlayerId still in lobby');
+      print('Host $_hostPlayerId still in lobby (backend-provided or fallback)');
       return;
     }
     
-    // Host left - assign new host (first player in lobby)
+    // Host left - assign new host (first player in lobby) as FALLBACK
+    // Note: Backend should handle host migration, this is just a fallback
     if (lobbyPlayers.isNotEmpty) {
       final newHostId = lobbyPlayers.first['playerId'] as int;
       _hostPlayerId = newHostId;
-      print('=== NEW HOST ASSIGNED ===');
+      print('=== FALLBACK: NEW HOST ASSIGNED (CLIENT-SIDE) ===');
       print('New host player ID: $_hostPlayerId');
       print('Is local player host? ${_hostPlayerId == widget.localPlayerId}');
+      print('NOTE: Backend should provide hostPlayerId in next RoomRoster event');
     } else {
       _hostPlayerId = null;
       print('No players left, host cleared');

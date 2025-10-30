@@ -736,13 +736,17 @@ class BombGame extends FlameGame
     );
   }
 
-  void _applyRemoteRoster(List<PlayerSummary> roster) {
+  void _applyRemoteRoster(RoomRosterEvent rosterEvent) {
+    final roster = rosterEvent.players;
+    final hostPlayerId = rosterEvent.hostPlayerId;
+    
     print('=== APPLY REMOTE ROSTER ===');
     print('Roster size: ${roster.length}');
+    print('Host player ID from backend: $hostPlayerId');
     print('My player ID: $networkPlayerId');
     print('Roster contents:');
     for (var p in roster) {
-      print('  - Player ${p.playerId}: ${p.displayName}');
+      print('  - Player ${p.playerId}: ${p.displayName}${p.playerId == hostPlayerId ? " (HOST)" : ""}');
     }
     
     // Build the full player list in join order

@@ -19,7 +19,7 @@ class GameHubClient {
   final _connectionStateController =
       StreamController<HubConnectionState>.broadcast();
   final _roomRosterController =
-      StreamController<List<PlayerSummary>>.broadcast();
+      StreamController<RoomRosterEvent>.broadcast();
   final _playerJoinedController = StreamController<PlayerSummary>.broadcast();
   final _playerLeftController = StreamController<PlayerSummary>.broadcast();
   final _playerDisconnectedController =
@@ -41,7 +41,7 @@ class GameHubClient {
 
   Stream<HubConnectionState> get connectionStateStream =>
       _connectionStateController.stream;
-  Stream<List<PlayerSummary>> get roomRosterStream =>
+  Stream<RoomRosterEvent> get roomRosterStream =>
       _roomRosterController.stream;
   Stream<PlayerSummary> get playerJoinedStream =>
       _playerJoinedController.stream;
@@ -257,9 +257,9 @@ class GameHubClient {
 
   void _registerHandlers(HubConnection connection) {
     connection.on('RoomRoster', (args) {
-      final roster = _parsePlayerSummaryList(args);
-      if (roster != null) {
-        _roomRosterController.add(roster);
+      final rosterEvent = _parseRoomRoster(args);
+      if (rosterEvent != null) {
+        _roomRosterController.add(rosterEvent);
       }
     });
 
@@ -475,6 +475,42 @@ class GameHubClient {
     );
   }
 
+  RoomRosterEvent? _parseRoomRoster(List<Object?>? args) {
+    if (args == null || args.isEmpty) {
+      return null;
+    }
+
+    // First element is the list of players
+    final first = args.first;
+    List<PlayerSummary>? players;
+    
+    if (first is Iterable) {
+      players = first
+          .map(_parsePlayerSummary)
+          .whereType<PlayerSummary>()
+          .toList(growable: false);
+    }
+
+    if (players == null || players.isEmpty) {
+      return null;
+    }
+
+    // Second element (if exists) might contain additional data like hostPlayerId
+    int? hostPlayerId;
+    if (args.length > 1) {
+      final secondArg = args[1];
+      if (secondArg is Map) {
+        final map = _parseMap(secondArg);
+        hostPlayerId = map != null ? _toInt(map['hostPlayerId']) : null;
+      } else {
+        // If the second argument is directly an int, it's the hostPlayerId
+        hostPlayerId = _toInt(secondArg);
+      }
+    }
+
+    return RoomRosterEvent(players: players, hostPlayerId: hostPlayerId);
+  }
+
   List<PlayerSummary>? _parsePlayerSummaryList(List<Object?>? args) {
     if (args == null || args.isEmpty) {
       return null;
@@ -612,4 +648,11 @@ class PlayerSummary {
 
   final int playerId;
   final String displayName;
+}
+
+class RoomRosterEvent {
+  RoomRosterEvent({required this.players, this.hostPlayerId});
+
+  final List<PlayerSummary> players;
+  final int? hostPlayerId;
 }
