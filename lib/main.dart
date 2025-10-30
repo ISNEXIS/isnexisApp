@@ -94,8 +94,10 @@ class _IsnexisState extends State<Isnexis> {
                       print('winningPlayer?.playerNumber: ${winningPlayer?.playerNumber}');
                       print('gameInstance.winnerPlayerNumber: ${gameInstance.winnerPlayerNumber}');
                       print('gameInstance.winnerName (from backend or local): $wName');
-                      print('Final playerNumber: $pNum');
-                      print('Final winnerName: $wName');
+                      print('gameInstance._winnerNameFromBackend: Internal check');
+                      print('Final playerNumber to display: $pNum');
+                      print('Final winnerName to display: $wName');
+                      print('Will show: ${wName ?? 'PLAYER $pNum'}');
                       return WinningScreen(
                         onPlayAgain: _restartGame,
                         onMainMenu: _goToMainMenu,

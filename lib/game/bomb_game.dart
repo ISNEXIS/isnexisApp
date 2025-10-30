@@ -1654,17 +1654,18 @@ class BombGame extends FlameGame
           !_deadPlayers.contains(networkPlayerId)) {
         winner = players.first;
         _winnerPlayerNumber = players.first.playerNumber;
+        _winnerNameFromBackend = _playerNames[networkPlayerId] ?? localPlayerName ?? 'Player $_winnerPlayerNumber';
         print('✓ Winner is local player (P$_winnerPlayerNumber)');
         print('  Network Player ID: $networkPlayerId');
         print('  Player Number (room position): ${players.first.playerNumber}');
-        print('  Winner Name: ${_playerNames[networkPlayerId]}');
+        print('  Winner Name: $_winnerNameFromBackend');
         
         // Send winner data to backend
         if (_winnerPlayerNumber != null && networkPlayerId != null) {
           _sendGameEndToBackend(
             networkPlayerId!,
             _winnerPlayerNumber!,
-            _playerNames[networkPlayerId],
+            _winnerNameFromBackend,
           );
         }
         
@@ -1687,6 +1688,7 @@ class BombGame extends FlameGame
           final winnerRoomPos = _playerIdToRoomPosition[winnerPlayerId] ?? 1;
           _winnerPlayerNumber = winnerRoomPos;
           final winnerName = _playerNames[winnerPlayerId] ?? 'Player $winnerRoomPos';
+          _winnerNameFromBackend = winnerName; // Store the name
           print('✓ Winner is remote player $winnerPlayerId (P$winnerRoomPos - $winnerName)');
           print('  playerIdToRoomPosition: $_playerIdToRoomPosition');
           print('  playerNames: $_playerNames');
