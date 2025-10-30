@@ -1,10 +1,11 @@
 import 'package:flutter/material.dart';
 
 import '../game/components/player_character.dart';
+import '../models/player_selection_data.dart';
 
 class PlayerSelectionScreen extends StatefulWidget {
   final VoidCallback onBack;
-  final Function(List<PlayerCharacter>) onStartGame;
+  final Function(List<PlayerSelectionData>) onStartGame;
   final String startButtonLabel;
   final String? multiplayerCode;
 
@@ -21,8 +22,8 @@ class PlayerSelectionScreen extends StatefulWidget {
 }
 
 class _PlayerSelectionScreenState extends State<PlayerSelectionScreen> {
-  int numberOfPlayers = 1;
-  final List<PlayerCharacter?> selectedCharacters = [null, null, null, null];
+  int numberOfPlayers = 2; // Minimum 2 players (1 human + 1 bot)
+  final List<PlayerSelectionData?> selectedPlayers = [null, null, null, null];
 
   @override
   Widget build(BuildContext context) {
@@ -140,8 +141,8 @@ class _PlayerSelectionScreenState extends State<PlayerSelectionScreen> {
                     const SizedBox(height: 10),
                     Row(
                       mainAxisAlignment: MainAxisAlignment.center,
-                      children: List.generate(4, (index) {
-                        final playerCount = index + 1;
+                      children: List.generate(3, (index) {
+                        final playerCount = index + 2; // Start from 2 (2, 3, 4)
                         final isSelected = numberOfPlayers == playerCount;
                         return Padding(
                           padding: const EdgeInsets.symmetric(horizontal: 8.0),
@@ -151,7 +152,7 @@ class _PlayerSelectionScreenState extends State<PlayerSelectionScreen> {
                                 numberOfPlayers = playerCount;
                                 // Clear selections beyond new player count
                                 for (int i = playerCount; i < 4; i++) {
-                                  selectedCharacters[i] = null;
+                                  selectedPlayers[i] = null;
                                 }
                               });
                             },
@@ -190,10 +191,11 @@ class _PlayerSelectionScreenState extends State<PlayerSelectionScreen> {
                   itemBuilder: (context, playerIndex) {
                     return _PlayerCharacterSelector(
                       playerNumber: playerIndex + 1,
-                      selectedCharacter: selectedCharacters[playerIndex],
-                      onCharacterSelected: (character) {
+                      selectedPlayer: selectedPlayers[playerIndex],
+                      isHuman: playerIndex == 0, // Only first player is human
+                      onPlayerSelected: (playerData) {
                         setState(() {
-                          selectedCharacters[playerIndex] = character;
+                          selectedPlayers[playerIndex] = playerData;
                         });
                       },
                     );
@@ -207,10 +209,10 @@ class _PlayerSelectionScreenState extends State<PlayerSelectionScreen> {
                 child: GestureDetector(
                   onTap: _canStartGame()
                       ? () {
-                          final players = selectedCharacters
+                          final players = selectedPlayers
                               .take(numberOfPlayers)
                               .where((c) => c != null)
-                              .cast<PlayerCharacter>()
+                              .cast<PlayerSelectionData>()
                               .toList();
                           widget.onStartGame(players);
                         }
@@ -253,7 +255,7 @@ class _PlayerSelectionScreenState extends State<PlayerSelectionScreen> {
 
   bool _canStartGame() {
     for (int i = 0; i < numberOfPlayers; i++) {
-      if (selectedCharacters[i] == null) {
+      if (selectedPlayers[i] == null) {
         return false;
       }
     }
@@ -261,19 +263,27 @@ class _PlayerSelectionScreenState extends State<PlayerSelectionScreen> {
   }
 }
 
-class _PlayerCharacterSelector extends StatelessWidget {
+class _PlayerCharacterSelector extends StatefulWidget {
   final int playerNumber;
-  final PlayerCharacter? selectedCharacter;
-  final Function(PlayerCharacter) onCharacterSelected;
+  final PlayerSelectionData? selectedPlayer;
+  final bool isHuman; // Whether this player slot is for human or bot
+  final Function(PlayerSelectionData) onPlayerSelected;
 
   const _PlayerCharacterSelector({
     required this.playerNumber,
-    required this.selectedCharacter,
-    required this.onCharacterSelected,
+    required this.selectedPlayer,
+    required this.isHuman,
+    required this.onPlayerSelected,
   });
 
   @override
+  State<_PlayerCharacterSelector> createState() => _PlayerCharacterSelectorState();
+}
+
+class _PlayerCharacterSelectorState extends State<_PlayerCharacterSelector> {
+  @override
   Widget build(BuildContext context) {
+    final isBot = !widget.isHuman; // Bot if not human
     return Container(
       margin: const EdgeInsets.only(bottom: 16.0),
       padding: const EdgeInsets.all(16.0),
@@ -284,24 +294,54 @@ class _PlayerCharacterSelector extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            '▶ PLAYER $playerNumber',
-            style: const TextStyle(
-              fontSize: 20,
-              fontFamily: 'Courier',
-              fontWeight: FontWeight.bold,
-              color: Color(0xFF9BBC0F),
-              letterSpacing: 1,
-            ),
+          Row(
+            children: [
+              Text(
+                '▶ PLAYER ${widget.playerNumber}',
+                style: const TextStyle(
+                  fontSize: 20,
+                  fontFamily: 'Courier',
+                  fontWeight: FontWeight.bold,
+                  color: Color(0xFF9BBC0F),
+                  letterSpacing: 1,
+                ),
+              ),
+              const SizedBox(width: 16),
+              // Display player type (non-interactive)
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                decoration: BoxDecoration(
+                  color: isBot ? const Color(0xFFFF6B35) : const Color(0xFF306230),
+                  border: Border.all(color: const Color(0xFF9BBC0F), width: 2),
+                ),
+                child: Text(
+                  isBot ? '🤖 BOT' : '👤 HUMAN',
+                  style: const TextStyle(
+                    fontSize: 12,
+                    fontFamily: 'Courier',
+                    fontWeight: FontWeight.bold,
+                    color: Color(0xFF9BBC0F),
+                  ),
+                ),
+              ),
+            ],
           ),
+          const SizedBox(height: 12),
+          
+          // Character selection
           const SizedBox(height: 12),
           Wrap(
             spacing: 12,
             runSpacing: 12,
             children: PlayerCharacter.values.map((character) {
-              final isSelected = selectedCharacter == character;
+              final isSelected = widget.selectedPlayer?.character == character;
               return GestureDetector(
-                onTap: () => onCharacterSelected(character),
+                onTap: () {
+                  widget.onPlayerSelected(PlayerSelectionData(
+                    character: character,
+                    isBot: isBot,
+                  ));
+                },
                 child: Container(
                   width: 80,
                   height: 100,

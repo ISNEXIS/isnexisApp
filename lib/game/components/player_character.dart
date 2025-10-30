@@ -9,17 +9,32 @@ enum PlayerCharacter {
 }
 
 extension PlayerCharacterExtension on PlayerCharacter {
+  /// Get the animated sprite sheet path for this character (if available)
+  /// Returns null if the character doesn't have an animated sprite sheet
+  String? get animatedSpritePath {
+    switch (this) {
+      case PlayerCharacter.character1:
+        return 'characters/KawinPlayable.png';
+      case PlayerCharacter.character2:
+        return 'characters/EiraPlayable.png';
+      case PlayerCharacter.character3:
+        return 'characters/AnsiaPlayable.png'; 
+      case PlayerCharacter.character4:
+        return 'characters/PavoPlayable.png'; 
+    }
+  }
+
   /// Get the asset path for this character's sprite
   String get spritePath {
     switch (this) {
       case PlayerCharacter.character1:
-        return 'assets/images/characters/character1.png';
+        return 'assets/images/characters/KawinPlayable.png';
       case PlayerCharacter.character2:
-        return 'assets/images/characters/character2.png';
+        return 'assets/images/characters/EiraPlayable.png';
       case PlayerCharacter.character3:
-        return 'assets/images/characters/character3.png';
+        return 'assets/images/characters/AnsiaPlayable.png';
       case PlayerCharacter.character4:
-        return 'assets/images/characters/character4.png';
+        return 'assets/images/characters/PavoPlayable.png';
     }
   }
 
@@ -41,13 +56,27 @@ extension PlayerCharacterExtension on PlayerCharacter {
   String get displayName {
     switch (this) {
       case PlayerCharacter.character1:
-        return 'Character 1';
+        return 'Kawin';
       case PlayerCharacter.character2:
-        return 'Character 2';
+        return 'Eira';
       case PlayerCharacter.character3:
-        return 'Character 3';
+        return 'Ansia';
       case PlayerCharacter.character4:
-        return 'Character 4';
+        return 'Pavo';
+    }
+  }
+
+  /// Get the bomb sprite path for this character
+  String get bombSpritePath {
+    switch (this) {
+      case PlayerCharacter.character1:
+        return 'bombs/bomb_character1.png';
+      case PlayerCharacter.character2:
+        return 'bombs/bomb_character2.png';
+      case PlayerCharacter.character3:
+        return 'bombs/bomb_character3.png';
+      case PlayerCharacter.character4:
+        return 'bombs/bomb_character4.png';
     }
   }
 }

@@ -8,8 +8,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:isnexis_app/services/game_hub_client.dart';
 
+import '../models/player_selection_data.dart';
 // Component imports
 import 'components/bomb.dart';
+import 'components/bot_player.dart';
 import 'components/explosion_effect.dart';
 import 'components/map_tile.dart';
 import 'components/player.dart';
@@ -25,14 +27,16 @@ class BombGame extends FlameGame
   late double tileSize; // Will be calculated to fill available screen space
 
   late List<List<TileType>> gameMap;
-  List<Player> players = []; // Support multiple players
-  final List<PlayerCharacter> playerCharacters;
+  List<Player> players = []; // Support multiple players (includes bots)
+  final List<PlayerSelectionData> selectedPlayers;
   Offset joystickDirection = Offset.zero; // Flutter joystick direction
   List<Bomb> bombs = [];
   List<Powerup> powerups = []; // Track active powerups
+  int _nextPowerupId = 0; // Counter for generating unique powerup IDs
   final Random _random = Random(); // For powerup drop chance
   bool isGameOver = false;
-  late Function(bool) onGameStateChanged; // Callback to notify main app
+  Player? winner; // Track the winning player
+  late Function(bool, {Player? winner}) onGameStateChanged; // Callback to notify main app
 
   // Player stats (for tracking overall game state)
   int maxBombs = 1; // Maximum bombs that can be placed at once (upgradeable)
@@ -53,6 +57,13 @@ class BombGame extends FlameGame
   final Map<int, RemotePlayer> _remotePlayers = {};
   final Map<int, Color> _playerColors = {};
   final Map<int, String> _playerNames = {};
+  final Map<int, PlayerCharacter> _playerCharacters = {}; // Maps playerId to selected character
+  final Map<int, int> _playerIdToRoomPosition = {}; // Maps server playerId to room position (1-4)
+  final List<PlayerSummary> _pendingRemotePlayers = []; // Store players until grid is ready
+  final Set<int> _deadPlayers = {}; // Track dead players to prevent re-adding them
+  
+  int? _winnerPlayerNumber; // Stores the winner's player number (1-4) for display
+  String? _winnerNameFromBackend; // Stores winner name received from backend
 
   bool _networkJoined = false;
   static const double _movementBroadcastInterval = 0.1;
@@ -61,7 +72,7 @@ class BombGame extends FlameGame
 
   BombGame({
     required this.onGameStateChanged,
-    required this.playerCharacters,
+    required this.selectedPlayers,
     this.networkClient,
     this.networkRoomId,
     this.networkPlayerId,
@@ -73,6 +84,31 @@ class BombGame extends FlameGame
       networkClient != null && networkRoomId != null && networkPlayerId != null;
 
   Iterable<int> get remotePlayerIds => _remotePlayers.keys;
+  
+  // Get the winner's player number for multiplayer (useful for dead players)
+  int? get winnerPlayerNumber => _winnerPlayerNumber;
+  
+  // Get the winner's name for multiplayer display
+  String? get winnerName {
+    // Prioritize backend winner name if available
+    if (_winnerNameFromBackend != null) {
+      return _winnerNameFromBackend;
+    }
+    
+    if (_winnerPlayerNumber == null) return null;
+    
+    // Find the player ID with this room position
+    final winnerEntry = _playerIdToRoomPosition.entries
+        .firstWhere(
+          (entry) => entry.value == _winnerPlayerNumber,
+          orElse: () => const MapEntry(-1, -1),
+        );
+    
+    if (winnerEntry.key != -1) {
+      return _playerNames[winnerEntry.key];
+    }
+    return null;
+  }
 
   @override
   Color backgroundColor() => const Color(0xFF2E7D32);
@@ -125,12 +161,64 @@ class BombGame extends FlameGame
     _renderMap();
     _spawnPlayer();
 
+    // Update any remote players that were created before grid initialization
+    _repositionRemotePlayers();
+
     for (final remote in _remotePlayers.values) {
       remote.updateTileSize(tileSize);
       if (!remote.isMounted) {
         add(remote);
       }
     }
+  }
+
+  void _repositionRemotePlayers() {
+    print('=== REPOSITIONING REMOTE PLAYERS ===');
+    print('Grid: ${gridWidth}x$gridHeight, Tile: $tileSize');
+    print('Pending players: ${_pendingRemotePlayers.length}');
+    print('Existing remote players: ${_remotePlayers.length}');
+
+    // First, create any pending remote players
+    for (final pendingPlayer in _pendingRemotePlayers) {
+      print('Creating pending player: ${pendingPlayer.playerId}');
+      _ensureRemotePlayer(pendingPlayer);
+    }
+    _pendingRemotePlayers.clear();
+
+    // Then reposition existing players (in case they were created with wrong dimensions)
+    if (_remotePlayers.isEmpty) {
+      print('No remote players to reposition');
+      return;
+    }
+
+    final spawnPositions = [
+      Vector2(1, 1), // Top-left - Player ID 1
+      Vector2(gridWidth - 2.0, 1), // Top-right - Player ID 2
+      Vector2(1, gridHeight - 2.0), // Bottom-left - Player ID 3
+      Vector2(gridWidth - 2.0, gridHeight - 2.0), // Bottom-right - Player ID 4
+    ];
+
+    for (final entry in _remotePlayers.entries) {
+      final playerId = entry.key;
+      final remote = entry.value;
+      
+      // Get room position from mapping, default to position based on playerId if not found
+      final roomPosition = _playerIdToRoomPosition[playerId] ?? playerId;
+      final spawnIndex = (roomPosition - 1).clamp(0, spawnPositions.length - 1);
+      final spawnPos = spawnPositions[spawnIndex];
+      // Add the same 0.1 offset that local players have
+      final pixelPos = Vector2(
+        spawnPos.x * tileSize + tileSize * 0.1,
+        spawnPos.y * tileSize + tileSize * 0.1,
+      );
+      
+      remote.position = pixelPos;
+      remote.updateTileSize(tileSize);
+      
+      print('Repositioned Player $playerId (Room Pos $roomPosition) to grid(${spawnPos.x}, ${spawnPos.y}) = pixel$pixelPos');
+    }
+    
+    print('Total remote players after repositioning: ${_remotePlayers.length}');
   }
 
   @override
@@ -212,37 +300,181 @@ class BombGame extends FlameGame
   void _spawnPlayer() {
     // Spawn positions for up to 4 players (corners of the map)
     final spawnPositions = [
-      Vector2(1, 1), // Top-left
-      Vector2(gridWidth - 2, 1), // Top-right
-      Vector2(1, gridHeight - 2), // Bottom-left
-      Vector2(gridWidth - 2, gridHeight - 2), // Bottom-right
+      Vector2(1, 1), // Top-left - Player ID 1
+      Vector2(gridWidth - 2, 1), // Top-right - Player ID 2
+      Vector2(1, gridHeight - 2), // Bottom-left - Player ID 3
+      Vector2(gridWidth - 2, gridHeight - 2), // Bottom-right - Player ID 4
     ];
 
     // Clear existing players
     players.clear();
-    alivePlayers = playerCharacters.length;
+    alivePlayers = selectedPlayers.length;
 
-    // Spawn each player
-    for (int i = 0; i < playerCharacters.length; i++) {
+    // In multiplayer mode, only create local player
+    if (_networkEnabled && networkPlayerId != null) {
+      print('=== MULTIPLAYER SPAWN ===');
+      print('Network Player ID: $networkPlayerId');
+      print('Local Player ID: $localPlayerId');
+      print('Selected Players: ${selectedPlayers.length}');
+      print('Player ID to Room Position map: $_playerIdToRoomPosition');
+      
+      // Get room position (1-4) from mapping
+      // If not yet set (roster hasn't arrived), we need to wait or use a default
+      int roomPosition;
+      if (_playerIdToRoomPosition.containsKey(networkPlayerId)) {
+        roomPosition = _playerIdToRoomPosition[networkPlayerId]!;
+        print('Using mapped room position: $roomPosition');
+      } else {
+        // Roster hasn't arrived yet - this shouldn't happen but handle gracefully
+        // For now, assume position 1 and it will be corrected when roster arrives
+        print('WARNING: Room position not yet assigned, using temporary position 1');
+        roomPosition = 1;
+      }
+      
+      print('Room Position for Player $networkPlayerId: $roomPosition');
+      
+      // Use room position (1-based) to determine spawn position
+      final spawnIndex = (roomPosition - 1).clamp(0, spawnPositions.length - 1);
+      final spawnPos = spawnPositions[spawnIndex];
+      
+      print('Spawning local player at index $spawnIndex (${spawnPos.x}, ${spawnPos.y})');
+      
+      // Get the character for this player
+      // First try to get from the character map (populated from roster)
+      PlayerCharacter character;
+      if (networkPlayerId != null && _playerCharacters.containsKey(networkPlayerId)) {
+        character = _playerCharacters[networkPlayerId]!;
+        print('Using character from character map: ${character.displayName}');
+      } else if (selectedPlayers.isNotEmpty && roomPosition <= selectedPlayers.length) {
+        // Fallback: get character from selectedPlayers based on room position
+        character = selectedPlayers[roomPosition - 1].character;
+        print('Using character from position ${roomPosition}: ${character.displayName}');
+      } else {
+        // Final fallback
+        character = selectedPlayers.isNotEmpty 
+            ? selectedPlayers.first.character
+            : PlayerCharacter.character1;
+        print('WARNING: Using fallback character: ${character.displayName}');
+      }
+      
+      final playerData = PlayerSelectionData(character: character, isBot: false);
+      
+      // Create only the local player
       final player = Player(
-        gridPosition: spawnPositions[i],
-        color: playerCharacters[i].fallbackColor,
-        character: playerCharacters[i],
-        playerNumber: i + 1,
+        gridPosition: spawnPos,
+        color: playerData.character.fallbackColor,
+        character: playerData.character,
+        playerNumber: roomPosition, // Use room position (1-4)
         tileSize: tileSize,
         gridWidth: gridWidth,
         gridHeight: gridHeight,
         getGameMap: () => gameMap,
         getIsGameOver: () => isGameOver,
-        getJoystickDirection: () => i == 0
-            ? Vector2(joystickDirection.dx, joystickDirection.dy)
-            : Vector2.zero(), // Only player 1 uses joystick for now
+        getJoystickDirection: () => Vector2(joystickDirection.dx, joystickDirection.dy),
         isBombAtPosition: _isBombAtPosition,
       );
+      
+      player.playerHealth = 1;
+      players.add(player);
+      add(player);
+      
+      print('Local player spawned: gridPos(${player.gridPosition.x}, ${player.gridPosition.y}), pixelPos(${player.position.x}, ${player.position.y})');
+      print('TileSize: $tileSize, GridSize: ${gridWidth}x$gridHeight');
+      print('Player character: ${playerData.character.displayName} (index: ${playerData.character.index})');
+      
+      // Send character selection to backend to ensure consistency
+      _sendCharacterSelection(networkPlayerId, playerData.character);
+      
+      return;
+    }
+
+    print('=== SINGLE PLAYER SPAWN ===');
+    print('Spawning ${selectedPlayers.length} player(s)');
+    // Single player / local mode - create all players
+    for (int i = 0; i < selectedPlayers.length; i++) {
+      final playerData = selectedPlayers[i];
+      final spawnPos = spawnPositions[i];
+      print('Player ${i + 1} spawning at: (${spawnPos.x}, ${spawnPos.y})');
+      Player player;
+      
+      if (playerData.isBot) {
+        // Create bot player (hard difficulty)
+        final botPlayer = BotPlayer(
+          gridPosition: spawnPos,
+          color: playerData.character.fallbackColor,
+          character: playerData.character,
+          playerNumber: i + 1,
+          tileSize: tileSize,
+          gridWidth: gridWidth,
+          gridHeight: gridHeight,
+          getGameMap: () => gameMap,
+          getIsGameOver: () => isGameOver,
+          getJoystickDirection: () => Vector2.zero(), // Bots don't use joystick
+          isBombAtPosition: _isBombAtPosition,
+          getOtherPlayers: () => players, // Give bot access to all players for enemy tracking
+        );
+        
+        // Override the requestBombPlacement method to connect to game logic
+        botPlayer.onBombPlaceRequest = () {
+          _handleBotBombPlacement(botPlayer);
+        };
+        
+        player = botPlayer;
+      } else {
+        // Create human player
+        player = Player(
+          gridPosition: spawnPos,
+          color: playerData.character.fallbackColor,
+          character: playerData.character,
+          playerNumber: i + 1,
+          tileSize: tileSize,
+          gridWidth: gridWidth,
+          gridHeight: gridHeight,
+          getGameMap: () => gameMap,
+          getIsGameOver: () => isGameOver,
+          getJoystickDirection: () => i == 0
+              ? Vector2(joystickDirection.dx, joystickDirection.dy)
+              : Vector2.zero(), // Only player 1 uses joystick for now
+          isBombAtPosition: _isBombAtPosition,
+        );
+      }
+      
       player.playerHealth = 1; // Initialize player health
       players.add(player);
       add(player);
+      print('  -> Added: Player ${i + 1} at (${player.gridPosition.x}, ${player.gridPosition.y}), Health: ${player.playerHealth}');
     }
+    
+    print('Total players spawned: ${players.length}');
+    for (int i = 0; i < players.length; i++) {
+      print('  Player ${i + 1}: Position (${players[i].gridPosition.x}, ${players[i].gridPosition.y})');
+    }
+  }
+
+  void _handleBotBombPlacement(BotPlayer bot) {
+    if (!bot.canPlaceBomb() || isGameOver) return;
+    
+    final bombPosition = bot.gridPosition;
+    
+    // Check if there's already a bomb at this position
+    if (_isBombAtPosition(bombPosition)) {
+      return;
+    }
+    
+    // Place the bomb
+    final newBomb = Bomb(
+      gridPosition: bombPosition,
+      tileSize: tileSize,
+      onExplode: explodeBomb,
+      ownerPlayer: bot,
+      ownerCharacter: bot.character,
+      fallbackColor: bot.color,
+    );
+    
+    bombs.add(newBomb);
+    add(newBomb);
+    bot.incrementBombCount();
+    bot.playBombThrowAnimation();
   }
 
   Future<void> _initializeNetworking() async {
@@ -289,7 +521,31 @@ class BombGame extends FlameGame
     );
 
     _networkSubscriptions.add(
+      client.gameStartStream.listen(_handleGameStarted),
+    );
+
+    _networkSubscriptions.add(
+      client.characterSelectedStream.listen(_handleCharacterSelected),
+    );
+
+    _networkSubscriptions.add(
       client.playerMovementStream.listen(_handleRemoteMovement),
+    );
+
+    _networkSubscriptions.add(
+      client.bombPlacedStream.listen(_handleRemoteBombPlaced),
+    );
+
+    _networkSubscriptions.add(
+      client.explosionStream.listen(_handleRemoteExplosion),
+    );
+
+    _networkSubscriptions.add(
+      client.playerDiedStream.listen(_handleRemotePlayerDied),
+    );
+
+    _networkSubscriptions.add(
+      client.itemCollectedStream.listen(_handleRemoteItemCollected),
     );
 
     _networkSubscriptions.add(
@@ -324,14 +580,145 @@ class BombGame extends FlameGame
     _networkJoined = false;
   }
 
+  void _handleGameStarted(GameStartEvent event) {
+    print('=== GAME STARTED EVENT RECEIVED ===');
+    print('Room ID: ${event.roomId}');
+    print('Player Characters: ${event.playerCharacters}');
+    
+    // Apply character data from backend if available
+    if (event.playerCharacters != null) {
+      final charMap = event.playerCharacters!;
+      for (final entry in charMap.entries) {
+        final playerId = int.tryParse(entry.key);
+        final characterIndex = entry.value as int?;
+        
+        if (playerId != null && characterIndex != null && 
+            characterIndex >= 0 && characterIndex < PlayerCharacter.values.length) {
+          final character = PlayerCharacter.values[characterIndex];
+          _playerCharacters[playerId] = character;
+          print('✓ Applied character for player $playerId: ${character.displayName}');
+          
+          // If remote player already exists, update their character
+          if (_remotePlayers.containsKey(playerId)) {
+            print('  Recreating remote player $playerId with correct character');
+            _removeRemotePlayer(playerId);
+            final name = _playerNames[playerId] ?? 'Player $playerId';
+            _ensureRemotePlayer(
+              PlayerSummary(playerId: playerId, displayName: name),
+            );
+          }
+        }
+      }
+    }
+  }
+
+  void _handleCharacterSelected(CharacterSelectedEvent event) {
+    print('=== CHARACTER SELECTED EVENT RECEIVED ===');
+    print('Player ID: ${event.playerId}');
+    print('Character Index: ${event.characterIndex}');
+    
+    if (event.characterIndex >= 0 && event.characterIndex < PlayerCharacter.values.length) {
+      final character = PlayerCharacter.values[event.characterIndex];
+      _playerCharacters[event.playerId] = character;
+      print('✓ Stored character for player ${event.playerId}: ${character.displayName}');
+      
+      // If remote player already exists and it's not us, update their character
+      if (event.playerId != networkPlayerId && _remotePlayers.containsKey(event.playerId)) {
+        print('  Recreating remote player ${event.playerId} with new character');
+        _removeRemotePlayer(event.playerId);
+        final name = _playerNames[event.playerId] ?? 'Player ${event.playerId}';
+        _ensureRemotePlayer(
+          PlayerSummary(playerId: event.playerId, displayName: name),
+        );
+      }
+    } else {
+      print('⚠ Invalid character index: ${event.characterIndex}');
+    }
+  }
+
   void _handleRemoteGameEnded(GameEndedEvent event) {
     if (isGameOver) {
       return;
     }
 
+    print('Received gameEnded event from server');
+    print('Event data: winnerId=${event.winnerId}, winnerName=${event.winnerName}, winnerRoomPosition=${event.winnerRoomPosition}');
     isGameOver = true;
-    paused = true;
-    onGameStateChanged(true);
+    
+    // Use winner data from backend if available
+    if (event.winnerRoomPosition != null) {
+      _winnerPlayerNumber = event.winnerRoomPosition;
+      _winnerNameFromBackend = event.winnerName; // Store name from backend
+      print('✓ Using winner data from backend: P${event.winnerRoomPosition} - ${event.winnerName ?? "Unknown"}');
+    } else {
+      // Fallback: Find the winner - the player NOT in the dead set
+      print('=== GAME ENDED - FINDING WINNER FOR DEAD PLAYER ===');
+      print('Dead players: $_deadPlayers');
+      print('All players in room: ${_playerIdToRoomPosition.keys.toList()}');
+      
+      int? winnerPlayerId;
+      
+      // Find the player who is NOT dead
+      for (var playerId in _playerIdToRoomPosition.keys) {
+        if (!_deadPlayers.contains(playerId)) {
+          winnerPlayerId = playerId;
+          break;
+        }
+      }
+      
+      if (winnerPlayerId != null) {
+        final winnerRoomPos = _playerIdToRoomPosition[winnerPlayerId] ?? 1;
+        _winnerPlayerNumber = winnerRoomPos;
+        final winnerName = _playerNames[winnerPlayerId] ?? 'Player $winnerRoomPos';
+        print('✓ Winner is player $winnerPlayerId (P$winnerRoomPos - $winnerName)');
+      } else {
+        print('⚠ Warning: Could not determine winner from gameEnded event!');
+        _winnerPlayerNumber = 1; // Fallback
+      }
+    }
+    
+    // Now notify to show winning screen to dead players
+    onGameStateChanged(true, winner: winner);
+  }
+
+  void _sendGameEndToBackend(int winnerId, int winnerRoomPosition, String? winnerName) {
+    if (!_networkJoined || networkClient == null || networkRoomId == null) {
+      print('Cannot send game end - not connected to network');
+      return;
+    }
+
+    print('=== SENDING GAME END TO BACKEND ===');
+    print('Winner ID: $winnerId');
+    print('Winner Room Position: $winnerRoomPosition');
+    print('Winner Name: $winnerName');
+
+    final summary = <String, dynamic>{
+      'winnerId': winnerId,
+      'winnerRoomPosition': winnerRoomPosition,
+      'winnerName': winnerName ?? 'Player $winnerRoomPosition',
+      'timestamp': DateTime.now().toIso8601String(),
+    };
+
+    _dispatchNetworkCall(
+      networkClient!.sendGameEnd(networkRoomId!, summary),
+      'sendGameEnd',
+    );
+  }
+
+  void _sendCharacterSelection(int? playerId, PlayerCharacter character) {
+    if (!_networkJoined || networkClient == null || networkRoomId == null || playerId == null) {
+      print('Cannot send character selection - not connected to network');
+      return;
+    }
+
+    print('=== SENDING CHARACTER SELECTION TO BACKEND ===');
+    print('Player ID: $playerId');
+    print('Character: ${character.displayName} (index: ${character.index})');
+
+    _dispatchNetworkCall(
+      networkClient!.selectCharacter(networkRoomId!, playerId, character.index),
+      'selectCharacter',
+    );
   }
 
   void _dispatchNetworkCall(Future<void> future, String actionDescription) {
@@ -343,9 +730,77 @@ class BombGame extends FlameGame
   }
 
   void _applyRemoteRoster(List<PlayerSummary> roster) {
+    print('=== APPLY REMOTE ROSTER ===');
+    print('Roster size: ${roster.length}');
+    print('My player ID: $networkPlayerId');
+    print('Roster contents:');
+    for (var p in roster) {
+      print('  - Player ${p.playerId}: ${p.displayName}');
+    }
+    
+    // Build the full player list in join order
+    // The roster from server should already be in join order
+    final allPlayers = <PlayerSummary>[];
+    
+    // Check if we're in the roster
+    bool foundSelf = roster.any((p) => p.playerId == networkPlayerId);
+    print('Am I in roster? $foundSelf');
+    
+    if (foundSelf) {
+      // Roster includes us - use it as-is (server knows the correct order)
+      allPlayers.addAll(roster);
+    } else {
+      // We're not in roster yet - shouldn't happen normally
+      // But if it does, just use the roster and we'll get our position later
+      print('WARNING: Not in roster yet, using roster as-is');
+      allPlayers.addAll(roster);
+    }
+    
+    print('Final player list for position assignment:');
+    for (int i = 0; i < allPlayers.length; i++) {
+      print('  Position ${i + 1}: Player ${allPlayers[i].playerId} (${allPlayers[i].displayName})');
+    }
+    
+    // Assign room positions (1-4) based on roster order (join order)
+    _playerIdToRoomPosition.clear();
+    for (int i = 0; i < allPlayers.length; i++) {
+      final playerId = allPlayers[i].playerId;
+      final roomPosition = i + 1; // 1-based position
+      _playerIdToRoomPosition[playerId] = roomPosition;
+      print('Player ID $playerId -> Room Position $roomPosition (${allPlayers[i].displayName})');
+      
+      // Map character from selectedPlayers based on roster order
+      // selectedPlayers is ordered by lobby/roster join order, so index i should match
+      if (i < selectedPlayers.length) {
+        _playerCharacters[playerId] = selectedPlayers[i].character;
+        print('  -> Character from selectedPlayers[$i]: ${selectedPlayers[i].character.displayName}');
+      }
+    }
+    
+    // Update our own player if position changed
+    if (networkPlayerId != null && _playerIdToRoomPosition.containsKey(networkPlayerId)) {
+      final myPosition = _playerIdToRoomPosition[networkPlayerId]!;
+      print('My assigned position: P$myPosition');
+      
+      // If we have a local player and position changed, recreate it
+      if (players.isNotEmpty) {
+        final oldNumber = players.first.playerNumber;
+        if (oldNumber != myPosition) {
+          print('Position changed from P$oldNumber to P$myPosition, recreating player');
+          // Remove old player
+          players.first.removeFromParent();
+          players.clear();
+          // Recreate with correct position
+          _spawnPlayer();
+        }
+      }
+    }
+    
     final desiredIds = <int>{};
     for (final summary in roster) {
+      print('Processing roster entry: ${summary.playerId} - ${summary.displayName}');
       if (summary.playerId == networkPlayerId) {
+        print('  -> Skipping (this is me)');
         continue;
       }
       _playerNames[summary.playerId] = summary.displayName;
@@ -363,6 +818,9 @@ class BombGame extends FlameGame
     if (roster.isNotEmpty) {
       notifyListeners();
     }
+    
+    print('Remote players after roster: ${_remotePlayers.keys.toList()}');
+    print('Final position mapping: $_playerIdToRoomPosition');
   }
 
   void _handleRemotePlayerJoined(PlayerSummary summary) {
@@ -383,8 +841,34 @@ class BombGame extends FlameGame
     if (event.playerId == networkPlayerId) {
       return;
     }
+    
+    print('RECV: Player ${event.playerId} movement - payload: ${event.payload}');
+    
+    // Handle character selection messages
+    final payload = event.payload;
+    if (payload != null && payload['type'] == 'character_selection') {
+      final characterIndex = payload['characterIndex'] as int?;
+      if (characterIndex != null && characterIndex >= 0 && characterIndex < PlayerCharacter.values.length) {
+        final character = PlayerCharacter.values[characterIndex];
+        _playerCharacters[event.playerId] = character;
+        print('Player ${event.playerId} character selection received: ${character.displayName}');
+        
+        // If remote player already exists, recreate with new character
+        if (_remotePlayers.containsKey(event.playerId)) {
+          print('Updating existing remote player with new character');
+          _removeRemotePlayer(event.playerId);
+          final name = _playerNames[event.playerId] ?? 'Player ${event.playerId}';
+          _ensureRemotePlayer(
+            PlayerSummary(playerId: event.playerId, displayName: name),
+          );
+        }
+      }
+      return; // Don't process as movement
+    }
+    
     var remote = _remotePlayers[event.playerId];
     if (remote == null) {
+      print('Creating remote player ${event.playerId} on-the-fly');
       final name = _playerNames[event.playerId] ?? 'Player ${event.playerId}';
       _ensureRemotePlayer(
         PlayerSummary(playerId: event.playerId, displayName: name),
@@ -392,10 +876,203 @@ class BombGame extends FlameGame
       remote = _remotePlayers[event.playerId];
     }
     if (remote == null) {
+      print('ERROR: Failed to create remote player ${event.playerId}');
       return;
     }
     final effectiveTileSize = tileSize == 0 ? 1.0 : tileSize;
+    print('Applying with tileSize=$effectiveTileSize, grid: ${gridWidth}x${gridHeight}');
     remote.applyMovement(event.payload, effectiveTileSize);
+    print('Remote player ${event.playerId} now at: ${remote.position}');
+  }
+
+  void _handleRemoteBombPlaced(BombPlacedEvent event) {
+    if (event.playerId == networkPlayerId) {
+      return; // Don't place our own bombs twice
+    }
+
+    final payload = event.payload;
+    if (payload == null) {
+      print('RECV: Bomb placed but no payload');
+      return;
+    }
+
+    final gridX = payload['gridX'] as num?;
+    final gridY = payload['gridY'] as num?;
+    
+    if (gridX == null || gridY == null) {
+      print('RECV: Bomb placed but invalid grid position');
+      return;
+    }
+
+    print('RECV: Bomb placed by player ${event.playerId} at grid($gridX, $gridY)');
+    
+    // Create the bomb at the specified location
+    final bombGridPos = Vector2(gridX.toDouble(), gridY.toDouble());
+    
+    // Check if a bomb already exists here
+    if (_isBombAtPosition(bombGridPos)) {
+      print('Bomb already exists at this position, skipping');
+      return;
+    }
+
+    final newBomb = Bomb(
+      gridPosition: bombGridPos,
+      tileSize: tileSize,
+      onExplode: explodeBomb,
+      ownerPlayer: null, // Remote player bomb - don't track owner
+      ownerCharacter: null,
+      fallbackColor: Colors.grey,
+      isRemote: true, // Mark as remote bomb - won't auto-explode
+    );
+
+    bombs.add(newBomb);
+    add(newBomb);
+    print('Added remote bomb at grid($gridX, $gridY) - waiting for explosion event');
+  }
+
+  void _handleRemoteExplosion(ExplosionEvent event) {
+    final payload = event.payload;
+    if (payload == null) return;
+    
+    // Check if this is a powerup spawn event (piggyback on explosion events)
+    final isPowerupSpawn = payload['isPowerupSpawn'] as bool?;
+    if (isPowerupSpawn == true) {
+      _handleRemotePowerupSpawn(payload);
+      return;
+    }
+    
+    // Handle remote bomb explosion
+    final center = payload['center'] as Map<String, dynamic>?;
+    final radius = payload['radius'] as num?;
+    
+    if (center == null || radius == null) {
+      print('RECV: Invalid explosion payload');
+      return;
+    }
+    
+    final gridX = center['x'] as num?;
+    final gridY = center['y'] as num?;
+    
+    if (gridX == null || gridY == null) {
+      print('RECV: Invalid explosion center');
+      return;
+    }
+    
+    final bombPos = Vector2(gridX.toDouble(), gridY.toDouble());
+    print('RECV: Explosion at grid($gridX, $gridY) with radius $radius');
+    
+    // Find and remove the bomb at this position
+    final bomb = bombs.where((b) => 
+      b.gridPosition.x.toInt() == bombPos.x.toInt() &&
+      b.gridPosition.y.toInt() == bombPos.y.toInt()
+    ).firstOrNull;
+    
+    if (bomb != null) {
+      print('Found remote bomb at explosion position - exploding it now');
+      // Trigger the explosion manually for this remote bomb
+      explodeBomb(bomb);
+    } else {
+      print('No bomb found at explosion position - may have already exploded');
+    }
+  }
+
+  void _handleRemotePowerupSpawn(Map<String, dynamic> payload) {
+    final gridX = payload['gridX'] as num?;
+    final gridY = payload['gridY'] as num?;
+    final typeIndex = payload['type'] as num?;
+    final powerupId = payload['id'] as num?;
+    
+    if (gridX == null || gridY == null || typeIndex == null || powerupId == null) {
+      print('RECV: Invalid powerup spawn payload: $payload');
+      return;
+    }
+    
+    final pos = Vector2(gridX.toDouble(), gridY.toDouble());
+    final type = PowerupType.values[typeIndex.toInt()];
+    
+    print('=== RECEIVED POWERUP SPAWN ===');
+    print('Type: ${type.name} (index: ${typeIndex.toInt()})');
+    print('Position: ($gridX, $gridY)');
+    print('ID: $powerupId');
+    
+    // Create the powerup
+    final powerup = Powerup(
+      type: type,
+      gridPosition: pos,
+      tileSize: tileSize,
+      id: powerupId.toInt(),
+    );
+    
+    add(powerup);
+    powerups.add(powerup);
+    print('✓ Powerup created and added to game');
+    
+    // Update our counter to avoid ID conflicts
+    if (powerupId.toInt() >= _nextPowerupId) {
+      _nextPowerupId = powerupId.toInt() + 1;
+    }
+  }
+
+  void _handleRemotePlayerDied(int playerId) {
+    print('=== PLAYER DEATH EVENT RECEIVED ===');
+    print('Dead Player ID: $playerId');
+    print('My Player ID: $networkPlayerId');
+    print('Current alive players: $alivePlayers');
+    print('Remote players before removal: ${_remotePlayers.keys.toList()}');
+    
+    // Add to dead players set to prevent re-adding
+    if (!_deadPlayers.contains(playerId)) {
+      _deadPlayers.add(playerId);
+      print('Added $playerId to dead players set: $_deadPlayers');
+      
+      // Only decrement if this player wasn't already marked as dead
+      // This prevents double-decrement when receiving own death event
+      if (alivePlayers > 0) {
+        alivePlayers--;
+        print('Alive players decreased to: $alivePlayers');
+      }
+    } else {
+      print('Player $playerId already in dead set, not decrementing alivePlayers again');
+    }
+    
+    if (playerId == networkPlayerId) {
+      // Handle local player death from remote event (duplicate from server)
+      print('This is MY death event (duplicate/from server)');
+      if (players.isNotEmpty) {
+        players.first.playerHealth = 0;
+        // Remove the player body from the screen
+        players.first.removeFromParent();
+        print('Local player died (from remote event) and removed from map.');
+      }
+    } else {
+      // Remove remote player - THIS MAKES THEM DISAPPEAR FOR OTHER PLAYERS
+      print('Removing remote player $playerId from my screen');
+      _removeRemotePlayer(playerId);
+      print('Remote player $playerId should now be invisible');
+    }
+    
+    print('Remote players after removal: ${_remotePlayers.keys.toList()}');
+    
+    // Check if game should end (only 1 player remaining wins)
+    if (alivePlayers == 1 && !isGameOver) {
+      print('Only $alivePlayers player left, ending game');
+      _gameOver();
+    }
+  }
+
+  void _handleRemoteItemCollected(ItemCollectedEvent event) {
+    print('RECV: Item ${event.itemId} collected by player ${event.playerId}');
+    
+    // Find and remove the powerup with this ID
+    final powerupToRemove = powerups.where((p) => p.id == event.itemId).firstOrNull;
+    if (powerupToRemove != null) {
+      print('Removing powerup ${event.itemId} from game');
+      powerupToRemove.collected = true;
+      powerupToRemove.removeFromParent();
+      powerups.remove(powerupToRemove);
+    } else {
+      print('Powerup ${event.itemId} not found (already collected?)');
+    }
   }
 
   void _ensureRemotePlayer(PlayerSummary summary) {
@@ -403,34 +1080,121 @@ class BombGame extends FlameGame
       return;
     }
 
+    // Don't create remote player if they're dead
+    if (_deadPlayers.contains(summary.playerId)) {
+      print('Player ${summary.playerId} is dead, not creating remote player');
+      return;
+    }
+
+    print('=== ENSURE REMOTE PLAYER ===');
+    print('Remote Player ID: ${summary.playerId}');
+    print('Remote Player Name: ${summary.displayName}');
+    print('Grid dimensions: ${gridWidth}x$gridHeight');
+    print('Tile size: $tileSize');
+
+    // Store player name regardless
     _playerNames[summary.playerId] = summary.displayName;
+    
+    // If grid not initialized yet, add to pending list
+    if (gridWidth == 0 || gridHeight == 0 || tileSize == 0) {
+      print('Grid not ready, adding to pending list');
+      // Check if already in pending list
+      if (!_pendingRemotePlayers.any((p) => p.playerId == summary.playerId)) {
+        _pendingRemotePlayers.add(summary);
+      }
+      return;
+    }
+
     final color = _colorForPlayer(summary.playerId);
     final existing = _remotePlayers[summary.playerId];
 
     if (existing != null) {
+      print('Remote player ${summary.playerId} already exists, updating name only');
       existing.displayName = summary.displayName;
       return;
     }
 
     final effectiveTileSize = tileSize == 0 ? 1.0 : tileSize;
+    
+    // Calculate spawn position based on room position (1-4)
+    final spawnPositions = [
+      Vector2(1, 1), // Top-left - Position 1
+      Vector2(gridWidth - 2.0, 1), // Top-right - Position 2
+      Vector2(1, gridHeight - 2.0), // Bottom-left - Position 3
+      Vector2(gridWidth - 2.0, gridHeight - 2.0), // Bottom-right - Position 4
+    ];
+    
+    // Get room position from mapping, default to position based on playerId if not found
+    final roomPosition = _playerIdToRoomPosition[summary.playerId] ?? summary.playerId;
+    final spawnIndex = (roomPosition - 1).clamp(0, spawnPositions.length - 1);
+    final spawnPos = spawnPositions[spawnIndex];
+    
+    print('Remote player ${summary.playerId} (Room Pos $roomPosition) spawn index: $spawnIndex');
+    print('Remote player ${summary.playerId} grid spawn pos: (${spawnPos.x}, ${spawnPos.y})');
+    
+    // Get character for this remote player from the character map
+    PlayerCharacter character;
+    if (_playerCharacters.containsKey(summary.playerId)) {
+      character = _playerCharacters[summary.playerId]!;
+      print('Using character from character map: ${character.displayName}');
+    } else {
+      // Character not received from server yet, use default
+      character = PlayerCharacter.character1;
+      print('WARNING: Character not in map for player ${summary.playerId}, using fallback character1');
+    }
+    
     final remotePlayer = RemotePlayer(
       playerId: summary.playerId,
       displayName: summary.displayName,
       tileSize: effectiveTileSize,
       color: color,
+      character: character,
     );
     if (tileSize > 0) {
       remotePlayer.updateTileSize(tileSize);
     }
-    remotePlayer.position = Vector2.all(tileSize);
+    // Set spawn position based on room position
+    // Add the same 0.1 offset that local players have
+    final pixelPos = Vector2(
+      spawnPos.x * tileSize + tileSize * 0.1,
+      spawnPos.y * tileSize + tileSize * 0.1,
+    );
+    remotePlayer.position = pixelPos;
+    
+    print('Remote player ${summary.playerId} created:');
+    print('  - Room Position: $roomPosition');
+    print('  - Spawn Index: $spawnIndex');
+    print('  - Grid Spawn: (${spawnPos.x}, ${spawnPos.y})');
+    print('  - Pixel Spawn: $pixelPos');
+    print('  - Character: ${character.displayName}');
+    print('  - TileSize: $tileSize');
+    
     add(remotePlayer);
     _remotePlayers[summary.playerId] = remotePlayer;
+    
+    print('Remote player ${summary.playerId} added to game');
   }
 
   void _removeRemotePlayer(int playerId) {
+    print('=== REMOVING REMOTE PLAYER ===');
+    print('Player ID: $playerId');
+    
     final remote = _remotePlayers.remove(playerId);
-    remote?.removeFromParent();
+    if (remote != null) {
+      remote.removeFromParent();
+      print('Removed remote player ${playerId} from game');
+    }
+    
+    // Also remove from pending list if they haven't been created yet
+    _pendingRemotePlayers.removeWhere((p) => p.playerId == playerId);
+    
     _playerNames.remove(playerId);
+    _playerIdToRoomPosition.remove(playerId);
+    _playerColors.remove(playerId);
+    
+    print('Remaining remote players: ${_remotePlayers.keys.toList()}');
+    print('Remaining pending players: ${_pendingRemotePlayers.length}');
+    print('Remaining position mapping: $_playerIdToRoomPosition');
   }
 
   Color _colorForPlayer(int playerId) {
@@ -455,14 +1219,14 @@ class BombGame extends FlameGame
     }
 
     final payload = <String, dynamic>{
-      'gridX': localPlayer.gridPosition.x.toInt(),
-      'gridY': localPlayer.gridPosition.y.toInt(),
-      'pixelX': localPlayer.position.x,
-      'pixelY': localPlayer.position.y,
+      'gridX': localPlayer.gridPosition.x,
+      'gridY': localPlayer.gridPosition.y,
       'velocityX': localPlayer.velocity.x,
       'velocityY': localPlayer.velocity.y,
       'timestamp': DateTime.now().toUtc().toIso8601String(),
     };
+
+    print('SEND: Player ${networkPlayerId} at grid(${localPlayer.gridPosition.x.toStringAsFixed(2)}, ${localPlayer.gridPosition.y.toStringAsFixed(2)})');
 
     _dispatchNetworkCall(
       networkClient!.sendPlayerMovement(networkRoomId!, payload),
@@ -484,6 +1248,8 @@ class BombGame extends FlameGame
     if (networkPlayerId != null) {
       payload['playerId'] = networkPlayerId;
     }
+
+    print('SEND: Bomb placed at grid(${bomb.gridPosition.x}, ${bomb.gridPosition.y})');
 
     _dispatchNetworkCall(
       networkClient!.sendBombPlaced(networkRoomId!, payload),
@@ -541,6 +1307,9 @@ class BombGame extends FlameGame
     // In the future, this can be extended to handle multiple player inputs
     final activePlayer = players.firstOrNull;
     if (activePlayer == null) return;
+    
+    // Don't allow dead players to place bombs
+    if (activePlayer.playerHealth <= 0) return;
 
     // Check if player can place more bombs
     if (!activePlayer.canPlaceBomb()) return;
@@ -588,12 +1357,24 @@ class BombGame extends FlameGame
     // Use the owner player's explosion radius
     final explosionRadius = bomb.ownerPlayer?.explosionRadius ?? 1;
 
+    // Determine if this client should spawn powerups
+    // In single player: always
+    // In multiplayer: only if this is our bomb (we placed it)
+    final isOurBomb = bomb.ownerPlayer != null && 
+                      players.isNotEmpty && 
+                      bomb.ownerPlayer == players.first;
+    
+    print('=== BOMB EXPLODED ===');
+    print('Network enabled: $_networkEnabled');
+    print('Is our bomb: $isOurBomb');
+    print('Should spawn powerups: $isOurBomb');
+    
     // Create explosion with player's explosion radius
-    createExplosion(bomb.gridPosition, explosionRadius);
+    createExplosion(bomb.gridPosition, explosionRadius, shouldSpawnPowerups: isOurBomb);
     _broadcastExplosion(bomb.gridPosition, explosionRadius);
   }
 
-  void createExplosion(Vector2 centerPos, int explosionRadius) {
+  void createExplosion(Vector2 centerPos, int explosionRadius, {bool shouldSpawnPowerups = false}) {
     // Explosion directions (up, down, left, right)
     final directions = [
       Vector2(0, -1), // Up
@@ -602,8 +1383,11 @@ class BombGame extends FlameGame
       Vector2(1, 0), // Right
     ];
 
+    // Collect all destroyed destructible positions
+    final List<Vector2> destroyedPositions = [];
+
     // Explode center position
-    _explodePosition(centerPos);
+    _explodePosition(centerPos, shouldSpawnPowerups: false, destroyedPositions: destroyedPositions);
 
     // Explode in each direction
     for (final direction in directions) {
@@ -629,7 +1413,7 @@ class BombGame extends FlameGame
         }
 
         // Explode this position (only for empty or destructible tiles)
-        _explodePosition(explodePos);
+        _explodePosition(explodePos, shouldSpawnPowerups: false, destroyedPositions: destroyedPositions);
 
         // Stop explosion if we hit a destructible (after destroying it)
         if (tileType == TileType.destructible) {
@@ -637,9 +1421,23 @@ class BombGame extends FlameGame
         }
       }
     }
+
+    // After all explosions, spawn ONE powerup if conditions are met
+    if (shouldSpawnPowerups && destroyedPositions.isNotEmpty && _random.nextDouble() < 0.20) {
+      // Pick a random destroyed position to spawn the powerup
+      final spawnPos = destroyedPositions[_random.nextInt(destroyedPositions.length)];
+      print('  Rolling for powerup spawn at (${spawnPos.x.toInt()}, ${spawnPos.y.toInt()})...');
+      final powerupType = _spawnRandomPowerup(spawnPos);
+      print('  ✓ Spawned powerup: ${powerupType.name}');
+      
+      // Broadcast powerup spawn in multiplayer
+      if (_networkEnabled && networkClient != null && networkRoomId != null) {
+        _broadcastPowerupSpawn(spawnPos, powerupType);
+      }
+    }
   }
 
-  void _explodePosition(Vector2 pos) {
+  void _explodePosition(Vector2 pos, {bool shouldSpawnPowerups = false, List<Vector2>? destroyedPositions}) {
     final x = pos.x.toInt();
     final y = pos.y.toInt();
 
@@ -655,9 +1453,9 @@ class BombGame extends FlameGame
       gameMap[y][x] = TileType.empty;
       score += 10; // Add points for destroying walls
 
-      // 20% chance to spawn a random powerup
-      if (_random.nextDouble() < 0.20) {
-        _spawnRandomPowerup(pos);
+      // Track destroyed positions for later powerup spawning
+      if (destroyedPositions != null) {
+        destroyedPositions.add(pos.clone());
       }
 
       // Update the visual tile
@@ -665,19 +1463,48 @@ class BombGame extends FlameGame
     }
   }
 
-  void _spawnRandomPowerup(Vector2 pos) {
+  void _broadcastPowerupSpawn(Vector2 pos, PowerupType type) {
+    if (!_networkJoined || networkClient == null || networkRoomId == null) {
+      return;
+    }
+
+    final powerupId = _nextPowerupId - 1; // Use the ID that was just assigned
+    final payload = <String, dynamic>{
+      'gridX': pos.x.toInt(),
+      'gridY': pos.y.toInt(),
+      'type': type.index,
+      'id': powerupId,
+      'isPowerupSpawn': true,
+    };
+
+    print('=== BROADCASTING POWERUP SPAWN ===');
+    print('Type: ${type.name} (index: ${type.index})');
+    print('Position: (${pos.x}, ${pos.y})');
+    print('ID: $powerupId');
+    
+    _dispatchNetworkCall(
+      networkClient!.sendExplosion(networkRoomId!, payload),
+      'sendPowerupSpawn',
+    );
+  }
+
+  PowerupType _spawnRandomPowerup(Vector2 pos) {
     // Randomly select one of the 4 powerup types with equal probability
     final powerupTypes = PowerupType.values;
     final randomType = powerupTypes[_random.nextInt(powerupTypes.length)];
     
+    final powerupId = _nextPowerupId++;
     final powerup = Powerup(
       type: randomType,
       gridPosition: pos,
       tileSize: tileSize,
+      id: powerupId,
     );
     
     add(powerup);
     powerups.add(powerup);
+    
+    return randomType;
   }
 
   void _updateTileVisual(Vector2 gridPos) {
@@ -720,10 +1547,44 @@ class BombGame extends FlameGame
         // Check if player is dead
         if (player.playerHealth <= 0) {
           alivePlayers--;
+          
+          print('=== LOCAL PLAYER DIED ===');
+          print('Player health: ${player.playerHealth}');
+          print('Alive players: $alivePlayers');
+          
+          // Add to dead players set
+          if (networkPlayerId != null) {
+            _deadPlayers.add(networkPlayerId!);
+            print('Added local player $networkPlayerId to dead players set');
+          }
+          
+          // Remove player from the map visually (both single player and multiplayer)
           player.removeFromParent();
+          print('Player removed from own screen.');
+          
+          // Broadcast player death in multiplayer
+          if (_networkEnabled && networkClient != null && networkRoomId != null && networkPlayerId != null) {
+            print('Broadcasting death to all other players...');
+            print('Room ID: $networkRoomId, Player ID: $networkPlayerId');
+            _dispatchNetworkCall(
+              networkClient!.sendPlayerDeath(networkRoomId!, networkPlayerId!),
+              'sendPlayerDeath',
+            );
+            print('Death broadcast sent!');
+          }
 
-          // Check if game is over (only one or no players left)
-          if (alivePlayers <= 1) {
+          // Check if game is over
+          if (_networkEnabled) {
+            // Multiplayer: Game ends when only 1 player left
+            if (alivePlayers == 1) {
+              _gameOver();
+            } else {
+              // Local player died but game continues - enter spectator mode
+              print('Local player died. Entering spectator mode. $alivePlayers players remaining.');
+            }
+          } else {
+            // Single player: Game ends when player dies (alivePlayers == 0)
+            print('Single player died. Game over.');
             _gameOver();
           }
         }
@@ -751,8 +1612,23 @@ class BombGame extends FlameGame
 
         // Check if player is on the same grid position as powerup
         if (playerGridX == powerupGridX && playerGridY == powerupGridY) {
-          // Apply powerup to player
-          powerup.applyToPlayer(player);
+          // Apply powerup to player with standard +1 bonus
+          final multiplier = 1;
+          powerup.applyToPlayer(player, multiplier: multiplier);
+          
+          print('Powerup collected: ${powerup.type.name} (+$multiplier) by player');
+          
+          // Broadcast powerup collection in multiplayer
+          if (_networkJoined && networkClient != null && networkRoomId != null && networkPlayerId != null) {
+            _dispatchNetworkCall(
+              networkClient!.sendItemCollected(
+                networkRoomId!,
+                itemId: powerup.id,
+                playerId: networkPlayerId!,
+              ),
+              'sendItemCollected',
+            );
+          }
           
           // Mark for removal
           powerupsToRemove.add(powerup);
@@ -767,8 +1643,88 @@ class BombGame extends FlameGame
 
   void _gameOver() {
     isGameOver = true;
-    paused = true;
-    onGameStateChanged(true); // Notify that game is over
+    
+    // In multiplayer, don't pause when game ends - let players continue spectating
+    // In single player, pause the game
+    if (!_networkEnabled) {
+      paused = true;
+    }
+    
+    // Find the winner among all players (local + remote)
+    if (_networkEnabled) {
+      // Multiplayer: Find the last player standing
+      print('=== GAME OVER - FINDING WINNER ===');
+      print('Alive players count: $alivePlayers');
+      print('Local player health: ${players.isNotEmpty ? players.first.playerHealth : 0}');
+      print('Remote players alive: ${_remotePlayers.keys.toList()}');
+      print('Dead players: $_deadPlayers');
+      
+      // Check if local player is the winner (alive and not in dead set)
+      if (players.isNotEmpty && 
+          players.first.playerHealth > 0 && 
+          networkPlayerId != null &&
+          !_deadPlayers.contains(networkPlayerId)) {
+        winner = players.first;
+        _winnerPlayerNumber = players.first.playerNumber;
+        _winnerNameFromBackend = _playerNames[networkPlayerId] ?? localPlayerName ?? 'Player $_winnerPlayerNumber';
+        print('✓ Winner is local player (P$_winnerPlayerNumber)');
+        print('  Network Player ID: $networkPlayerId');
+        print('  Player Number (room position): ${players.first.playerNumber}');
+        print('  Winner Name: $_winnerNameFromBackend');
+        
+        // Send winner data to backend
+        if (_winnerPlayerNumber != null && networkPlayerId != null) {
+          _sendGameEndToBackend(
+            networkPlayerId!,
+            _winnerPlayerNumber!,
+            _winnerNameFromBackend,
+          );
+        }
+        
+        // Notify everyone - local player won
+        onGameStateChanged(true, winner: winner);
+      } else {
+        // Local player is dead, find winner among remote players
+        // The winner is the player NOT in the dead set
+        int? winnerPlayerId;
+        
+        // Check all players in the room to find who's not dead
+        for (var playerId in _playerIdToRoomPosition.keys) {
+          if (!_deadPlayers.contains(playerId)) {
+            winnerPlayerId = playerId;
+            break;
+          }
+        }
+        
+        if (winnerPlayerId != null) {
+          final winnerRoomPos = _playerIdToRoomPosition[winnerPlayerId] ?? 1;
+          _winnerPlayerNumber = winnerRoomPos;
+          final winnerName = _playerNames[winnerPlayerId] ?? 'Player $winnerRoomPos';
+          _winnerNameFromBackend = winnerName; // Store the name
+          print('✓ Winner is remote player $winnerPlayerId (P$winnerRoomPos - $winnerName)');
+          print('  playerIdToRoomPosition: $_playerIdToRoomPosition');
+          print('  playerNames: $_playerNames');
+          // winner stays null for dead players, will use _winnerPlayerNumber in main.dart
+        } else {
+          print('⚠ Warning: Could not determine winner!');
+          _winnerPlayerNumber = 1; // Fallback
+        }
+        
+        // Notify dead players to show winning screen (1 player left = game over)
+        print('Local player is dead. Showing winner screen to spectator.');
+        onGameStateChanged(true, winner: winner);
+      }
+    } else {
+      // Single player: Check if player is alive or dead
+      if (players.isNotEmpty && players.first.playerHealth > 0) {
+        // Player is alive and won (all bots defeated or game completed)
+        winner = players.first;
+      } else {
+        // Player died - no winner, show game over
+        winner = null;
+      }
+      onGameStateChanged(true, winner: winner); // Notify that game is over
+    }
   }
 
   void restartGame() {
@@ -776,7 +1732,10 @@ class BombGame extends FlameGame
     paused = false;
     maxBombs = 1; // Reset to default
     score = 0;
-    alivePlayers = playerCharacters.length;
+    alivePlayers = selectedPlayers.length;
+    winner = null; // Clear winner
+    _winnerPlayerNumber = null; // Clear winner number
+    _winnerNameFromBackend = null; // Clear backend winner name
 
     // Reset invincibility for all players
     playerInvincibility = [false, false, false, false];
@@ -911,6 +1870,7 @@ class BombGame extends FlameGame
       _movementBroadcastTimer += dt;
       if (_movementBroadcastTimer >= _movementBroadcastInterval) {
         _movementBroadcastTimer = 0.0;
+        print('Broadcasting movement (joined=${_networkJoined}, players=${players.length}, remotes=${_remotePlayers.length})');
         _broadcastLocalMovement();
       }
     }

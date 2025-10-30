@@ -52,7 +52,7 @@ class _MultiplayerSetupScreenState extends State<MultiplayerSetupScreen> {
   @override
   void initState() {
     super.initState();
-    _serverController = TextEditingController(text: 'http://localhost:5231');
+    _serverController = TextEditingController(text: 'http://45.154.24.169:8080/');
     _displayNameController = TextEditingController();
     _joinCodeController = TextEditingController();
     _roomNameController = TextEditingController();
@@ -123,7 +123,7 @@ class _MultiplayerSetupScreenState extends State<MultiplayerSetupScreen> {
                         _buildRetroTextField(
                           controller: _serverController,
                           label: 'SERVER URL',
-                          hintText: 'http://localhost:5231',
+                          hintText: 'http://45.154.24.169:8080/',
                         ),
                         const SizedBox(height: 16),
                         _buildRetroTextField(
@@ -488,13 +488,15 @@ class _MultiplayerSetupScreenState extends State<MultiplayerSetupScreen> {
         ),
       );
     } on ApiException catch (error) {
+      print('ApiException: ${error.message}, Status: ${error.statusCode}');
       setState(() {
         _errorMessage = error.message;
       });
     } catch (error) {
+      print('Connection error: $error');
       setState(() {
         _errorMessage =
-            'Unable to contact the server. Please check the URL and try again.';
+            'Unable to contact the server. Please check the URL and try again.\nError: $error';
       });
     } finally {
       if (mounted) {
