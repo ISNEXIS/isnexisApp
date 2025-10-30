@@ -83,20 +83,34 @@ class Powerup extends PositionComponent {
   }
 
   void applyToPlayer(Player player, {int multiplier = 1}) {
-    if (collected) return;
+    print('>>> APPLYING POWERUP TO PLAYER <<<');
+    print('Powerup ID: $id');
+    print('Powerup Type: ${type.name}');
+    print('Already collected: $collected');
+    print('Multiplier: $multiplier');
+    
+    if (collected) {
+      print('⚠️ WARNING: Powerup already collected! Ignoring duplicate application.');
+      return;
+    }
     
     collected = true;
+    print('✓ Applying powerup with multiplier $multiplier');
     
     switch (type) {
       case PowerupType.extraLife:
+        print('  Adding $multiplier to player health');
         player.playerHealth += multiplier;
         break;
       case PowerupType.extraBomb:
+        print('  Adding $multiplier to maxBombs');
         player.maxBombs += multiplier;
         break;
       case PowerupType.explosionRange:
+        print('  Adding $multiplier to explosionRadius');
         player.explosionRadius += multiplier;
         break;
     }
+    print('>>> POWERUP APPLICATION COMPLETE <<<');
   }
 }

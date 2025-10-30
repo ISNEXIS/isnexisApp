@@ -1075,9 +1075,27 @@ class BombGame extends FlameGame
   }
 
   void _handleRemoteItemCollected(ItemCollectedEvent event) {
-    print('RECV: Item ${event.itemId} collected by player ${event.playerId}');
+    print('=== RECEIVED ItemCollected EVENT ===');
+    print('Item ID: ${event.itemId}');
+    print('Collected by player: ${event.playerId}');
+    print('My player ID: $networkPlayerId');
     
-    // Find and remove the powerup with this ID
+    // Don't process our own collection events - we already applied it locally
+    if (event.playerId == networkPlayerId) {
+      print('This is my own collection event - just removing powerup visually');
+      // Just remove the powerup from the list, don't apply it again
+      final powerupToRemove = powerups.where((p) => p.id == event.itemId).firstOrNull;
+      if (powerupToRemove != null) {
+        print('Removing my collected powerup ${event.itemId} from game');
+        powerupToRemove.collected = true;
+        powerupToRemove.removeFromParent();
+        powerups.remove(powerupToRemove);
+      }
+      return;
+    }
+    
+    // For other players' collections, just remove the powerup from our view
+    print('Another player collected this item - removing from my view');
     final powerupToRemove = powerups.where((p) => p.id == event.itemId).firstOrNull;
     if (powerupToRemove != null) {
       print('Removing powerup ${event.itemId} from game');
