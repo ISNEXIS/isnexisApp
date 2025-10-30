@@ -34,6 +34,7 @@ class _MultiplayerLobbyScreenState extends State<MultiplayerLobbyScreen> {
   PlayerCharacter selectedCharacter = PlayerCharacter.character1;
   final List<Map<String, dynamic>> lobbyPlayers = [];
   final Map<int, PlayerCharacter> playerCharacters = {}; // Store character selections locally
+  int? _hostPlayerId; // Track the current host (room creator or next player if host leaves)
   StreamSubscription? _rosterSubscription;
   StreamSubscription? _playerJoinedSubscription;
   StreamSubscription? _playerLeftSubscription;
@@ -50,6 +51,10 @@ class _MultiplayerLobbyScreenState extends State<MultiplayerLobbyScreen> {
     final localPlayerId = widget.localPlayerId;
     if (localPlayerId != null) {
       playerCharacters[localPlayerId] = selectedCharacter;
+      // The local player is the host when they create the room
+      _hostPlayerId = localPlayerId;
+      print('=== HOST INITIALIZED ===');
+      print('Host player ID: $_hostPlayerId');
     }
     _initializeMultiplayer();
   }
@@ -106,6 +111,9 @@ class _MultiplayerLobbyScreenState extends State<MultiplayerLobbyScreen> {
               });
             }
             
+            // Update host if current host left
+            _updateHost();
+            
             print('Lobby players list updated: ${lobbyPlayers.length} players');
           });
         }, onError: (error) {
@@ -143,6 +151,10 @@ class _MultiplayerLobbyScreenState extends State<MultiplayerLobbyScreen> {
           setState(() {
             lobbyPlayers.removeWhere((p) => p['playerId'] == player.playerId);
             playerCharacters.remove(player.playerId);
+            
+            // Update host if the leaving player was the host
+            _updateHost();
+            
             print('Removed player from lobby. Total players: ${lobbyPlayers.length}');
           });
         }, onError: (error) {
@@ -156,6 +168,10 @@ class _MultiplayerLobbyScreenState extends State<MultiplayerLobbyScreen> {
           setState(() {
             lobbyPlayers.removeWhere((p) => p['playerId'] == player.playerId);
             playerCharacters.remove(player.playerId);
+            
+            // Update host if the disconnected player was the host
+            _updateHost();
+            
             print('Removed disconnected player from lobby. Total players: ${lobbyPlayers.length}');
           });
         }, onError: (error) {
@@ -297,6 +313,31 @@ class _MultiplayerLobbyScreenState extends State<MultiplayerLobbyScreen> {
         'isLocal': playerId == widget.localPlayerId,
       });
     });
+  }
+
+  void _updateHost() {
+    // If current host still exists in lobby, keep them
+    if (_hostPlayerId != null && 
+        lobbyPlayers.any((p) => p['playerId'] == _hostPlayerId)) {
+      print('Host $_hostPlayerId still in lobby');
+      return;
+    }
+    
+    // Host left - assign new host (first player in lobby)
+    if (lobbyPlayers.isNotEmpty) {
+      final newHostId = lobbyPlayers.first['playerId'] as int;
+      _hostPlayerId = newHostId;
+      print('=== NEW HOST ASSIGNED ===');
+      print('New host player ID: $_hostPlayerId');
+      print('Is local player host? ${_hostPlayerId == widget.localPlayerId}');
+    } else {
+      _hostPlayerId = null;
+      print('No players left, host cleared');
+    }
+  }
+
+  bool _isLocalPlayerHost() {
+    return _hostPlayerId != null && _hostPlayerId == widget.localPlayerId;
   }
 
   @override
@@ -633,12 +674,19 @@ class _MultiplayerLobbyScreenState extends State<MultiplayerLobbyScreen> {
                           itemCount: lobbyPlayers.length,
                           itemBuilder: (context, index) {
                             final player = lobbyPlayers[index];
+                            final playerId = player['playerId'] as int;
+                            final isHost = playerId == _hostPlayerId;
                             return Container(
                               margin: const EdgeInsets.only(bottom: 8),
                               padding: const EdgeInsets.all(12),
                               decoration: BoxDecoration(
                                 color: const Color(0xFF306230),
-                                border: Border.all(color: const Color(0xFF9BBC0F), width: 2),
+                                border: Border.all(
+                                  color: isHost 
+                                      ? const Color(0xFFFFFF00) // Yellow border for host
+                                      : const Color(0xFF9BBC0F),
+                                  width: isHost ? 3 : 2,
+                                ),
                               ),
                               child: Row(
                                 children: [
@@ -652,14 +700,29 @@ class _MultiplayerLobbyScreenState extends State<MultiplayerLobbyScreen> {
                                   ),
                                   const SizedBox(width: 12),
                                   Expanded(
-                                    child: Text(
-                                      player['name'],
-                                      style: const TextStyle(
-                                        fontSize: 16,
-                                        fontFamily: 'Courier',
-                                        color: Color(0xFF9BBC0F),
-                                        fontWeight: FontWeight.bold,
-                                      ),
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          player['name'],
+                                          style: const TextStyle(
+                                            fontSize: 16,
+                                            fontFamily: 'Courier',
+                                            color: Color(0xFF9BBC0F),
+                                            fontWeight: FontWeight.bold,
+                                          ),
+                                        ),
+                                        if (isHost)
+                                          const Text(
+                                            '👑 HOST',
+                                            style: TextStyle(
+                                              fontSize: 12,
+                                              fontFamily: 'Courier',
+                                              color: Color(0xFFFFFF00),
+                                              fontWeight: FontWeight.bold,
+                                            ),
+                                          ),
+                                      ],
                                     ),
                                   ),
                                 ],
@@ -677,7 +740,9 @@ class _MultiplayerLobbyScreenState extends State<MultiplayerLobbyScreen> {
               Padding(
                 padding: const EdgeInsets.all(20.0),
                 child: _buildRetroButton(
-                  text: 'START GAME',
+                  text: _isLocalPlayerHost() 
+                      ? 'START GAME' 
+                      : 'WAITING FOR HOST...',
                   onPressed: _canStartGame() ? _startGame : null,
                   color: const Color(0xFF9BBC0F),
                 ),
@@ -690,8 +755,8 @@ class _MultiplayerLobbyScreenState extends State<MultiplayerLobbyScreen> {
   }
 
   bool _canStartGame() {
-    // At least 2 players required
-    return lobbyPlayers.length >= 2;
+    // Only host can start, and need at least 2 players
+    return _isLocalPlayerHost() && lobbyPlayers.length >= 2;
   }
 
   void _startGame() async {
