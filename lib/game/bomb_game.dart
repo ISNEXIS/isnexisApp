@@ -951,7 +951,20 @@ class BombGame extends FlameGame
       return;
     }
 
-    print('RECV: Bomb placed by player ${event.playerId} at grid($gridX, $gridY)');
+    // Extract character information if available
+    PlayerCharacter? ownerCharacter;
+    final characterId = payload['characterId'] as int?;
+    if (characterId != null && characterId > 0) {
+      final characterIndex = characterId - 1; // Convert from 1-based to 0-based
+      if (characterIndex >= 0 && characterIndex < PlayerCharacter.values.length) {
+        ownerCharacter = PlayerCharacter.values[characterIndex];
+        print('RECV: Bomb placed by player ${event.playerId} at grid($gridX, $gridY) with character ${ownerCharacter.displayName}');
+      } else {
+        print('RECV: Bomb placed by player ${event.playerId} at grid($gridX, $gridY) with invalid characterId $characterId');
+      }
+    } else {
+      print('RECV: Bomb placed by player ${event.playerId} at grid($gridX, $gridY) - no character info');
+    }
     
     // Create the bomb at the specified location
     final bombGridPos = Vector2(gridX.toDouble(), gridY.toDouble());
@@ -967,14 +980,14 @@ class BombGame extends FlameGame
       tileSize: tileSize,
       onExplode: explodeBomb,
       ownerPlayer: null, // Remote player bomb - don't track owner
-      ownerCharacter: null,
-      fallbackColor: Colors.grey,
+      ownerCharacter: ownerCharacter, // Use the character from the event
+      fallbackColor: ownerCharacter?.fallbackColor ?? Colors.grey,
       isRemote: true, // Mark as remote bomb - won't auto-explode
     );
 
     bombs.add(newBomb);
     add(newBomb);
-    print('Added remote bomb at grid($gridX, $gridY) - waiting for explosion event');
+    print('Added remote bomb at grid($gridX, $gridY)${ownerCharacter != null ? " with ${ownerCharacter.displayName} sprite" : ""} - waiting for explosion event');
   }
 
   void _handleRemoteExplosion(ExplosionEvent event) {
@@ -1314,7 +1327,14 @@ class BombGame extends FlameGame
       payload['playerId'] = networkPlayerId;
     }
 
-    print('SEND: Bomb placed at grid(${bomb.gridPosition.x}, ${bomb.gridPosition.y})');
+    // Add character information so remote players can show correct bomb sprite
+    if (bomb.ownerCharacter != null) {
+      // Send 1-based character ID to match backend convention
+      payload['characterId'] = bomb.ownerCharacter!.index + 1;
+      print('SEND: Bomb placed at grid(${bomb.gridPosition.x}, ${bomb.gridPosition.y}) with character ${bomb.ownerCharacter!.displayName} (ID: ${bomb.ownerCharacter!.index + 1})');
+    } else {
+      print('SEND: Bomb placed at grid(${bomb.gridPosition.x}, ${bomb.gridPosition.y})');
+    }
 
     _dispatchNetworkCall(
       networkClient!.sendBombPlaced(networkRoomId!, payload),
