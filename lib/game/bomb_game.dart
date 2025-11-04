@@ -475,6 +475,7 @@ class BombGame extends FlameGame
       ownerPlayer: bot,
       ownerCharacter: bot.character,
       fallbackColor: bot.color,
+      explosionRadius: bot.explosionRadius, // Use bot's explosion radius
     );
     
     bombs.add(newBomb);
@@ -987,6 +988,7 @@ class BombGame extends FlameGame
 
     final gridX = payload['gridX'] as num?;
     final gridY = payload['gridY'] as num?;
+    final explosionRadius = payload['explosionRadius'] as num?;
     
     if (gridX == null || gridY == null) {
       print('RECV: Bomb placed but invalid grid position');
@@ -1000,12 +1002,12 @@ class BombGame extends FlameGame
       final characterIndex = characterId - 1; // Convert from 1-based to 0-based
       if (characterIndex >= 0 && characterIndex < PlayerCharacter.values.length) {
         ownerCharacter = PlayerCharacter.values[characterIndex];
-        print('RECV: Bomb placed by player ${event.playerId} at grid($gridX, $gridY) with character ${ownerCharacter.displayName}');
+        print('RECV: Bomb placed by player ${event.playerId} at grid($gridX, $gridY) with character ${ownerCharacter.displayName}, radius: ${explosionRadius ?? 1}');
       } else {
-        print('RECV: Bomb placed by player ${event.playerId} at grid($gridX, $gridY) with invalid characterId $characterId');
+        print('RECV: Bomb placed by player ${event.playerId} at grid($gridX, $gridY) with invalid characterId $characterId, radius: ${explosionRadius ?? 1}');
       }
     } else {
-      print('RECV: Bomb placed by player ${event.playerId} at grid($gridX, $gridY) - no character info');
+      print('RECV: Bomb placed by player ${event.playerId} at grid($gridX, $gridY) - no character info, radius: ${explosionRadius ?? 1}');
     }
     
     // Create the bomb at the specified location
@@ -1025,11 +1027,12 @@ class BombGame extends FlameGame
       ownerCharacter: ownerCharacter, // Use the character from the event
       fallbackColor: ownerCharacter?.fallbackColor ?? Colors.grey,
       isRemote: true, // Mark as remote bomb - won't auto-explode
+      explosionRadius: explosionRadius?.toInt() ?? 1, // Use radius from event
     );
 
     bombs.add(newBomb);
     add(newBomb);
-    print('Added remote bomb at grid($gridX, $gridY)${ownerCharacter != null ? " with ${ownerCharacter.displayName} sprite" : ""} - waiting for explosion event');
+    print('Added remote bomb at grid($gridX, $gridY)${ownerCharacter != null ? " with ${ownerCharacter.displayName} sprite" : ""}, radius: ${explosionRadius ?? 1} - waiting for explosion event');
   }
 
   void _handleRemoteExplosion(ExplosionEvent event) {
@@ -1388,6 +1391,7 @@ class BombGame extends FlameGame
       'gridX': bomb.gridPosition.x.toInt(),
       'gridY': bomb.gridPosition.y.toInt(),
       'timer': bomb.timer,
+      'explosionRadius': bomb.explosionRadius, // Include explosion radius
     };
 
     if (networkPlayerId != null) {
@@ -1398,9 +1402,9 @@ class BombGame extends FlameGame
     if (bomb.ownerCharacter != null) {
       // Send 1-based character ID to match backend convention
       payload['characterId'] = bomb.ownerCharacter!.index + 1;
-      print('SEND: Bomb placed at grid(${bomb.gridPosition.x}, ${bomb.gridPosition.y}) with character ${bomb.ownerCharacter!.displayName} (ID: ${bomb.ownerCharacter!.index + 1})');
+      print('SEND: Bomb placed at grid(${bomb.gridPosition.x}, ${bomb.gridPosition.y}) with character ${bomb.ownerCharacter!.displayName} (ID: ${bomb.ownerCharacter!.index + 1}), radius: ${bomb.explosionRadius}');
     } else {
-      print('SEND: Bomb placed at grid(${bomb.gridPosition.x}, ${bomb.gridPosition.y})');
+      print('SEND: Bomb placed at grid(${bomb.gridPosition.x}, ${bomb.gridPosition.y}), radius: ${bomb.explosionRadius}');
     }
 
     _dispatchNetworkCall(
@@ -1483,6 +1487,7 @@ class BombGame extends FlameGame
         ownerCharacter: activePlayer.character,
         ownerPlayer: activePlayer,
         fallbackColor: activePlayer.color,
+        explosionRadius: activePlayer.explosionRadius, // Use player's current explosion radius
       );
       bombs.add(bomb);
       add(bomb);
@@ -1506,8 +1511,8 @@ class BombGame extends FlameGame
       bomb.ownerPlayer!.decrementBombCount();
     }
 
-    // Use the owner player's explosion radius
-    final explosionRadius = bomb.ownerPlayer?.explosionRadius ?? 1;
+    // Use the bomb's stored explosion radius (which includes powerup bonuses)
+    final explosionRadius = bomb.explosionRadius;
 
     // Determine if this client should spawn powerups
     // In single player: always
@@ -1517,11 +1522,12 @@ class BombGame extends FlameGame
                       bomb.ownerPlayer == players.first;
     
     print('=== BOMB EXPLODED ===');
+    print('Explosion radius: $explosionRadius');
     print('Network enabled: $_networkEnabled');
     print('Is our bomb: $isOurBomb');
     print('Should spawn powerups: $isOurBomb');
     
-    // Create explosion with player's explosion radius
+    // Create explosion with the bomb's explosion radius
     createExplosion(bomb.gridPosition, explosionRadius, shouldSpawnPowerups: isOurBomb);
     _broadcastExplosion(bomb.gridPosition, explosionRadius);
   }

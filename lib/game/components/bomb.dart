@@ -12,6 +12,7 @@ class Bomb extends PositionComponent {
   final Player? ownerPlayer; // Reference to player who placed this bomb
   final Color fallbackColor; // Fallback color if no sprite
   final bool isRemote; // If true, this bomb was placed by another player and shouldn't auto-explode
+  final int explosionRadius; // Explosion radius for this bomb
   double timer = 3.0; // 3 seconds until explosion
 
   // Components for rendering
@@ -26,6 +27,7 @@ class Bomb extends PositionComponent {
     this.ownerPlayer,
     this.fallbackColor = Colors.black,
     this.isRemote = false,
+    this.explosionRadius = 1, // Default radius is 1
   }) : super(
          position: Vector2(
            gridPosition.x * tileSize + tileSize / 2,
