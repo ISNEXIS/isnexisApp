@@ -336,8 +336,14 @@ class BombGame extends FlameGame
       // Use room position (1-based) to determine spawn position
       final spawnIndex = (roomPosition - 1).clamp(0, spawnPositions.length - 1);
       final spawnPos = spawnPositions[spawnIndex];
+      final spawnName = roomPosition == 1 ? "Top-left" : roomPosition == 2 ? "Top-right" : roomPosition == 3 ? "Bottom-left" : "Bottom-right";
       
-      print('Spawning local player at index $spawnIndex (${spawnPos.x}, ${spawnPos.y})');
+      print('=== LOCAL PLAYER SPAWN ===');
+      print('Player ID: $networkPlayerId');
+      print('Room Position: $roomPosition');
+      print('Spawn Index: $spawnIndex');
+      print('Spawn Location: $spawnName (${spawnPos.x}, ${spawnPos.y})');
+      print('=========================');
       
       // Get the character for this player
       // First try to get from the character map (populated from roster)
@@ -806,20 +812,56 @@ class BombGame extends FlameGame
     }
     
     // Assign room positions (1-4) based on roster order (join order)
+    print('=== ASSIGNING ROOM POSITIONS (BY JOIN ORDER) ===');
+    print('Clearing previous mappings...');
     _playerIdToRoomPosition.clear();
-    for (int i = 0; i < allPlayers.length; i++) {
-      final playerId = allPlayers[i].playerId;
-      final roomPosition = i + 1; // 1-based position
-      _playerIdToRoomPosition[playerId] = roomPosition;
-      print('Player ID $playerId -> Room Position $roomPosition (${allPlayers[i].displayName})');
-      
-      // Map character from selectedPlayers based on roster order
-      // selectedPlayers is ordered by lobby/roster join order, so index i should match
-      if (i < selectedPlayers.length) {
-        _playerCharacters[playerId] = selectedPlayers[i].character;
-        print('  -> Character from selectedPlayers[$i]: ${selectedPlayers[i].character.displayName}');
+    print('Roster order (join order): ${allPlayers.length} players');
+    print('selectedPlayers: ${selectedPlayers.length} players');
+    
+    // First, create a map of playerId -> character from selectedPlayers
+    final Map<int, PlayerCharacter> playerIdToCharacter = {};
+    for (var playerData in selectedPlayers) {
+      if (playerData.playerId != null) {
+        playerIdToCharacter[playerData.playerId!] = playerData.character;
+        print('  PlayerID ${playerData.playerId} selected ${playerData.character.displayName}');
       }
     }
+    
+    // Now assign room positions based on roster order (join order)
+    for (int i = 0; i < allPlayers.length; i++) {
+      final playerId = allPlayers[i].playerId;
+      final roomPosition = i + 1; // 1-based position (join order)
+      _playerIdToRoomPosition[playerId] = roomPosition;
+      
+      final spawnName = roomPosition == 1 ? "Top-left" : 
+                        roomPosition == 2 ? "Top-right" : 
+                        roomPosition == 3 ? "Bottom-left" : "Bottom-right";
+      
+      print('✓ Player ID $playerId -> Room Position $roomPosition (${allPlayers[i].displayName})');
+      print('  Join Order: $roomPosition, Spawn: $spawnName');
+      
+      // Map character using playerId (not index!)
+      if (playerIdToCharacter.containsKey(playerId)) {
+        _playerCharacters[playerId] = playerIdToCharacter[playerId]!;
+        print('  -> Character: ${playerIdToCharacter[playerId]!.displayName} (from player ID mapping)');
+      } else if (i < selectedPlayers.length) {
+        // Fallback to index-based mapping if playerId not available (shouldn't happen in multiplayer)
+        _playerCharacters[playerId] = selectedPlayers[i].character;
+        print('  -> Character: ${selectedPlayers[i].character.displayName} (FALLBACK: index-based)');
+      } else {
+        print('  -> WARNING: No character mapping available for player $playerId');
+      }
+    }
+    
+    print('=== ROOM POSITION MAPPING COMPLETE ===');
+    print('Full mapping (by JOIN ORDER):');
+    _playerIdToRoomPosition.forEach((playerId, position) {
+      final char = _playerCharacters[playerId];
+      final spawnName = position == 1 ? "Top-left" : 
+                        position == 2 ? "Top-right" : 
+                        position == 3 ? "Bottom-left" : "Bottom-right";
+      print('  Player $playerId = Join Position $position ($spawnName), Character: ${char?.displayName ?? "UNKNOWN"}');
+    });
     
     // Update our own player if position changed
     if (networkPlayerId != null && _playerIdToRoomPosition.containsKey(networkPlayerId)) {
@@ -1202,13 +1244,38 @@ class BombGame extends FlameGame
       Vector2(gridWidth - 2.0, gridHeight - 2.0), // Bottom-right - Position 4
     ];
     
-    // Get room position from mapping, default to position based on playerId if not found
-    final roomPosition = _playerIdToRoomPosition[summary.playerId] ?? summary.playerId;
+    // Get room position from mapping
+    // IMPORTANT: This must be set by _applyRemoteRoster() before creating remote players
+    // If not set, we assign a temporary position that will be corrected when roster arrives
+    int roomPosition;
+    if (_playerIdToRoomPosition.containsKey(summary.playerId)) {
+      roomPosition = _playerIdToRoomPosition[summary.playerId]!;
+      print('✓ Using mapped room position: $roomPosition');
+    } else {
+      // Roster hasn't arrived yet - assign next available position
+      // This will be corrected when _applyRemoteRoster() is called
+      final usedPositions = _playerIdToRoomPosition.values.toSet();
+      roomPosition = 1;
+      while (usedPositions.contains(roomPosition) && roomPosition <= 4) {
+        roomPosition++;
+      }
+      print('⚠ WARNING: Room position not yet assigned for player ${summary.playerId}');
+      print('  Using temporary position $roomPosition (will be corrected by roster)');
+      // Temporarily assign this position to prevent duplicates
+      _playerIdToRoomPosition[summary.playerId] = roomPosition;
+    }
+    
     final spawnIndex = (roomPosition - 1).clamp(0, spawnPositions.length - 1);
     final spawnPos = spawnPositions[spawnIndex];
+    final spawnName = roomPosition == 1 ? "Top-left" : roomPosition == 2 ? "Top-right" : roomPosition == 3 ? "Bottom-left" : "Bottom-right";
     
-    print('Remote player ${summary.playerId} (Room Pos $roomPosition) spawn index: $spawnIndex');
-    print('Remote player ${summary.playerId} grid spawn pos: (${spawnPos.x}, ${spawnPos.y})');
+    print('=== REMOTE PLAYER SPAWN ===');
+    print('Player ID: ${summary.playerId}');
+    print('Room Position: $roomPosition');
+    print('Spawn Index: $spawnIndex');
+    print('Spawn Location: $spawnName');
+    print('Grid Spawn: (${spawnPos.x}, ${spawnPos.y})');
+    print('===========================');
     
     // Get character for this remote player from the character map
     PlayerCharacter character;
@@ -1697,18 +1764,41 @@ class BombGame extends FlameGame
 
         // Check if player is on the same grid position as powerup
         if (playerGridX == powerupGridX && playerGridY == powerupGridY) {
+          // Double-check collected flag
+          if (powerup.collected) {
+            print('⚠️ Powerup ${powerup.id} already collected in this check');
+            continue;
+          }
+          
+          // Mark as collected and remove from list IMMEDIATELY to prevent double collection
+          powerup.collected = true;
+          powerup.removeFromParent();
+          powerupsToRemove.add(powerup);
+          
           // Apply powerup to player with standard +1 bonus (both single and multiplayer)
           final multiplier = 1;
           
           // Log current stats before applying
           print('=== POWERUP COLLECTION ===');
+          print('Powerup ID: ${powerup.id}');
           print('Type: ${powerup.type.name}');
           print('Multiplier: $multiplier (should always be 1)');
           print('Player health BEFORE: ${player.playerHealth}');
           print('Player maxBombs BEFORE: ${player.maxBombs}');
           print('Player explosionRadius BEFORE: ${player.explosionRadius}');
           
-          powerup.applyToPlayer(player, multiplier: multiplier);
+          // Apply stats directly to avoid any double-application issues
+          switch (powerup.type) {
+            case PowerupType.extraLife:
+              player.playerHealth += multiplier;
+              break;
+            case PowerupType.extraBomb:
+              player.maxBombs += multiplier;
+              break;
+            case PowerupType.explosionRange:
+              player.explosionRadius += multiplier;
+              break;
+          }
           
           print('Player health AFTER: ${player.playerHealth}');
           print('Player maxBombs AFTER: ${player.maxBombs}');
@@ -1728,9 +1818,8 @@ class BombGame extends FlameGame
             );
           }
           
-          // Mark for removal
-          powerupsToRemove.add(powerup);
-          powerup.removeFromParent();
+          // Break to prevent collecting multiple powerups in same frame
+          break;
         }
       }
 

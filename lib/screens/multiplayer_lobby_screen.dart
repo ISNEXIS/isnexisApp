@@ -2,7 +2,6 @@ import 'dart:async';
 import 'dart:ui' as ui;
 
 import 'package:flame/extensions.dart';
-import 'package:flame/sprite.dart';
 import 'package:flame/widgets.dart';
 import 'package:flutter/material.dart';
 
@@ -18,6 +17,7 @@ class MultiplayerLobbyScreen extends StatefulWidget {
   final int? roomId;
   final int? localPlayerId;
   final String? localPlayerName;
+  final bool createdRoom; // Whether this player created the room (is host)
 
   const MultiplayerLobbyScreen({
     super.key,
@@ -28,6 +28,7 @@ class MultiplayerLobbyScreen extends StatefulWidget {
     this.roomId,
     this.localPlayerId,
     this.localPlayerName,
+    this.createdRoom = false,
   });
 
   @override
@@ -114,11 +115,18 @@ class _MultiplayerLobbyScreenState extends State<MultiplayerLobbyScreen> {
     final localPlayerId = widget.localPlayerId;
     if (localPlayerId != null) {
       playerCharacters[localPlayerId] = selectedCharacter;
-      // Don't set host here - wait for backend to tell us who the host is
-      // The backend will send the hostPlayerId in the RoomRoster event
-      print('=== LOBBY INITIALIZED ===');
-      print('Local player ID: $localPlayerId');
-      print('Waiting for backend to identify host...');
+      
+      // If this player created the room, they are the host
+      if (widget.createdRoom) {
+        _hostPlayerId = localPlayerId;
+        print('=== LOBBY INITIALIZED ===');
+        print('Local player ID: $localPlayerId');
+        print('✓ You created the room - YOU ARE THE HOST');
+      } else {
+        print('=== LOBBY INITIALIZED ===');
+        print('Local player ID: $localPlayerId');
+        print('Waiting for backend to identify host...');
+      }
     }
     _initializeMultiplayer();
   }
@@ -155,17 +163,29 @@ class _MultiplayerLobbyScreenState extends State<MultiplayerLobbyScreen> {
           setState(() {
             // Update host from backend if provided
             if (rosterEvent.hostPlayerId != null) {
+              final previousHost = _hostPlayerId;
               _hostPlayerId = rosterEvent.hostPlayerId;
-              print('✓ Host updated from backend: $_hostPlayerId');
+              if (previousHost != _hostPlayerId) {
+                print('=== HOST UPDATED FROM BACKEND ===');
+                print('Previous host: $previousHost');
+                print('New host from backend: $_hostPlayerId');
+                if (_hostPlayerId == localPlayerId) {
+                  print('✓✓✓ YOU ARE THE HOST! ✓✓✓');
+                }
+              } else {
+                print('✓ Host confirmed from backend: $_hostPlayerId');
+              }
             }
             
             lobbyPlayers.clear();
             for (var player in rosterEvent.players) {
               final isMe = player.playerId == localPlayerId;
+              // Use stored character selection if available, otherwise use character1 as default
+              final character = playerCharacters[player.playerId] ?? PlayerCharacter.character1;
               lobbyPlayers.add({
                 'playerId': player.playerId,
                 'name': isMe ? '${player.displayName} (You)' : player.displayName,
-                'character': PlayerCharacter.character1,
+                'character': character,
                 'isLocal': isMe,
               });
             }
@@ -390,24 +410,33 @@ class _MultiplayerLobbyScreenState extends State<MultiplayerLobbyScreen> {
   }
 
   void _updateHost() {
+    print('=== UPDATE HOST CHECK ===');
+    print('Current host ID: $_hostPlayerId');
+    print('Lobby players: ${lobbyPlayers.map((p) => 'ID ${p['playerId']}').join(', ')}');
+    
     // If current host still exists in lobby, keep them
     if (_hostPlayerId != null && 
         lobbyPlayers.any((p) => p['playerId'] == _hostPlayerId)) {
-      print('Host $_hostPlayerId still in lobby (backend-provided or fallback)');
+      print('✓ Host $_hostPlayerId still in lobby - no change needed');
       return;
     }
     
-    // Host left - assign new host (first player in lobby) as FALLBACK
-    // Note: Backend should handle host migration, this is just a fallback
+    // Host left - assign new host (first player in lobby = first who joined)
+    // The first player in lobbyPlayers is the earliest joiner (since roster is in join order)
     if (lobbyPlayers.isNotEmpty) {
       final newHostId = lobbyPlayers.first['playerId'] as int;
+      final previousHost = _hostPlayerId;
       _hostPlayerId = newHostId;
-      print('=== FALLBACK: NEW HOST ASSIGNED (CLIENT-SIDE) ===');
-      print('New host player ID: $_hostPlayerId');
-      print('Is local player host? ${_hostPlayerId == widget.localPlayerId}');
-      print('NOTE: Backend should provide hostPlayerId in next RoomRoster event');
+      print('=== HOST TRANSFER ===');
+      print('Previous host: $previousHost (left the room)');
+      print('New host: $_hostPlayerId (next player in join order)');
+      print('Is local player the new host? ${_hostPlayerId == widget.localPlayerId}');
+      if (_hostPlayerId == widget.localPlayerId) {
+        print('✓✓✓ YOU ARE NOW THE HOST! ✓✓✓');
+      }
     } else {
       _hostPlayerId = null;
+      print('⚠ No players left in lobby - host cleared');
       print('No players left, host cleared');
     }
   }
@@ -849,10 +878,24 @@ class _MultiplayerLobbyScreenState extends State<MultiplayerLobbyScreen> {
           print('Player $playerId -> Character ${character.displayName} (index ${character.index})');
         }
         
-        // Send game start with character data
-        await hubClient.sendGameStartWithCharacters(roomId, characterMap);
+        // Try to send game start with character data (proper way if server supports it)
+        try {
+          await hubClient.sendGameStartWithCharacters(roomId, characterMap);
+          print('Game start with characters sent successfully');
+        } catch (e) {
+          print('sendGameStartWithCharacters failed (server may not support it): $e');
+        }
         
-        print('Game start with characters sent successfully');
+        // FALLBACK: Also send via movement event to ensure all clients receive it
+        // This is critical because server might not support SendGameStartWithCharacters
+        print('Sending game_start via movement event as fallback...');
+        await hubClient.sendPlayerMovement(roomId, {
+          'type': 'game_start',
+          'playerId': localPlayerId,
+          'roomId': roomId,
+          'characterIndex': selectedCharacter.index,
+        });
+        print('Game start sent via movement event');
         
         // Start game locally immediately (don't wait for echo back)
         _handleGameStart();
@@ -877,17 +920,29 @@ class _MultiplayerLobbyScreenState extends State<MultiplayerLobbyScreen> {
 
   void _handleGameStart() {
     print('Handling game start - creating player list');
+    print('Lobby players order (JOIN ORDER):');
+    for (int i = 0; i < lobbyPlayers.length; i++) {
+      final player = lobbyPlayers[i];
+      final playerId = player['playerId'] as int;
+      final character = playerCharacters[playerId] ?? (player['character'] as PlayerCharacter);
+      print('  Join Position ${i + 1}: Player ID $playerId -> ${character.displayName}');
+    }
+    
     final players = lobbyPlayers.map((player) {
       final playerId = player['playerId'] as int;
       // Use stored character selection if available, otherwise use lobby display character
       final character = playerCharacters[playerId] ?? (player['character'] as PlayerCharacter);
-      print('Player $playerId using character: ${character.displayName}');
       return PlayerSelectionData(
         character: character,
         isBot: false, // No bots in multiplayer
+        playerId: playerId, // Include player ID for proper spawn positioning
       );
     }).toList();
     print('Starting game with ${players.length} players');
+    print('Player data being sent to game:');
+    for (int i = 0; i < players.length; i++) {
+      print('  Index $i: PlayerID ${players[i].playerId} -> ${players[i].character.displayName}');
+    }
     widget.onStartGame(players);
   }
 

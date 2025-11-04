@@ -144,6 +144,7 @@ class _IsnexisState extends State<Isnexis> {
               roomId: _pendingMultiplayerConfig?.roomId,
               localPlayerId: _pendingMultiplayerConfig?.playerId,
               localPlayerName: _pendingMultiplayerConfig?.displayName,
+              createdRoom: _pendingMultiplayerConfig?.createdRoom ?? false,
             );
           } else {
             return MainMenu(
