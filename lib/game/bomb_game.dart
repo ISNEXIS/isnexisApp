@@ -318,20 +318,29 @@ class BombGame extends FlameGame
       print('Selected Players: ${selectedPlayers.length}');
       print('Player ID to Room Position map: $_playerIdToRoomPosition');
       
+      final myPlayerId = networkPlayerId!; // Non-null assertion for easier use
+      
       // Get room position (1-4) from mapping
-      // If not yet set (roster hasn't arrived), we need to wait or use a default
+      // If not yet set (roster hasn't arrived), assign next available temporary position
       int roomPosition;
-      if (_playerIdToRoomPosition.containsKey(networkPlayerId)) {
-        roomPosition = _playerIdToRoomPosition[networkPlayerId]!;
-        print('Using mapped room position: $roomPosition');
+      if (_playerIdToRoomPosition.containsKey(myPlayerId)) {
+        roomPosition = _playerIdToRoomPosition[myPlayerId]!;
+        print('✓ Using mapped room position from roster: $roomPosition');
       } else {
-        // Roster hasn't arrived yet - this shouldn't happen but handle gracefully
-        // For now, assume position 1 and it will be corrected when roster arrives
-        print('WARNING: Room position not yet assigned, using temporary position 1');
+        // Roster hasn't arrived yet - assign next available temporary position
+        // This prevents all players from spawning at position 1
+        final usedPositions = _playerIdToRoomPosition.values.toSet();
         roomPosition = 1;
+        while (usedPositions.contains(roomPosition) && roomPosition <= 4) {
+          roomPosition++;
+        }
+        // Temporarily store this position (will be overwritten by roster)
+        _playerIdToRoomPosition[myPlayerId] = roomPosition;
+        print('⚠ WARNING: Roster not yet received for player $myPlayerId');
+        print('  Assigned temporary position: $roomPosition (will be corrected when roster arrives)');
       }
       
-      print('Room Position for Player $networkPlayerId: $roomPosition');
+      print('Room Position for Player $myPlayerId: $roomPosition');
       
       // Use room position (1-based) to determine spawn position
       final spawnIndex = (roomPosition - 1).clamp(0, spawnPositions.length - 1);
@@ -339,7 +348,7 @@ class BombGame extends FlameGame
       final spawnName = roomPosition == 1 ? "Top-left" : roomPosition == 2 ? "Top-right" : roomPosition == 3 ? "Bottom-left" : "Bottom-right";
       
       print('=== LOCAL PLAYER SPAWN ===');
-      print('Player ID: $networkPlayerId');
+      print('Player ID: $myPlayerId');
       print('Room Position: $roomPosition');
       print('Spawn Index: $spawnIndex');
       print('Spawn Location: $spawnName (${spawnPos.x}, ${spawnPos.y})');
@@ -348,8 +357,8 @@ class BombGame extends FlameGame
       // Get the character for this player
       // First try to get from the character map (populated from roster)
       PlayerCharacter character;
-      if (networkPlayerId != null && _playerCharacters.containsKey(networkPlayerId)) {
-        character = _playerCharacters[networkPlayerId]!;
+      if (_playerCharacters.containsKey(myPlayerId)) {
+        character = _playerCharacters[myPlayerId]!;
         print('Using character from character map: ${character.displayName}');
       } else if (selectedPlayers.isNotEmpty && roomPosition <= selectedPlayers.length) {
         // Fallback: get character from selectedPlayers based on room position
@@ -389,7 +398,7 @@ class BombGame extends FlameGame
       print('Player character: ${playerData.character.displayName} (index: ${playerData.character.index})');
       
       // Send character selection to backend to ensure consistency
-      _sendCharacterSelection(networkPlayerId, playerData.character);
+      _sendCharacterSelection(myPlayerId, playerData.character);
       
       return;
     }
